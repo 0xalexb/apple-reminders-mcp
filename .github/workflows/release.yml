@@ -28,10 +28,38 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate wrapper script
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          cat > apple-reminders-mcp <<'SCRIPT_EOF'
+          #!/bin/bash
+          VERSION="__VERSION__"
+          CACHE_MARKER="${HOME}/.cache/apple-reminders-mcp-version"
+
+          if [ -f "$CACHE_MARKER" ]; then
+              OLD_VERSION=$(cat "$CACHE_MARKER")
+              if [ "$OLD_VERSION" != "$VERSION" ]; then
+                  uv cache prune --quiet 2>/dev/null
+              fi
+          fi
+          mkdir -p "$(dirname "$CACHE_MARKER")"
+          echo "$VERSION" > "$CACHE_MARKER"
+
+          exec uvx --from "git+https://github.com/0xalexb/apple-reminders-mcp@v${VERSION}" apple-reminders-mcp "$@"
+          SCRIPT_EOF
+          sed -i "s/__VERSION__/${VERSION}/" apple-reminders-mcp
+          chmod +x apple-reminders-mcp
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
+          files: apple-reminders-mcp
 
   update-homebrew:
     needs: release
@@ -41,20 +69,34 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Checkout homebrew-tap
+      - name: Download script and compute sha256
+        id: sha
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          curl -sL "https://github.com/0xalexb/apple-reminders-mcp/releases/download/v${VERSION}/apple-reminders-mcp" -o apple-reminders-mcp
+          echo "sha256=$(shasum -a 256 apple-reminders-mcp | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout homebrew-apps
         uses: actions/checkout@v4
         with:
-          repository: 0xalexb/homebrew-tap
+          repository: 0xalexb/homebrew-apps
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
-      - name: Update formula version
+      - name: Update formula
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          SHA256: ${{ steps.sha.outputs.sha256 }}
         run: |
-          sed -i "s/version \".*\"/version \"${{ steps.version.outputs.version }}\"/" Formula/apple-reminders-mcp.rb
+          sed -i "s|url \".*\"|url \"https://github.com/0xalexb/apple-reminders-mcp/releases/download/v${VERSION}/apple-reminders-mcp\"|" Formula/apple-reminders-mcp.rb
+          sed -i "s/sha256 \".*\"/sha256 \"${SHA256}\"/" Formula/apple-reminders-mcp.rb
 
       - name: Commit and push
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Formula/apple-reminders-mcp.rb
-          git commit -m "Update apple-reminders-mcp to ${{ steps.version.outputs.version }}"
+          git commit -m "Update apple-reminders-mcp to ${VERSION}"
           git push
