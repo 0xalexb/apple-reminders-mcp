@@ -35,6 +35,7 @@ wheels = [
 
 [[package]]
 name = "apple-reminders-mcp"
+version = "1"
 source = { editable = "." }
 dependencies = [
     { name = "mcp", extra = ["cli"] },
