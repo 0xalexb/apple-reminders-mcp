@@ -6,12 +6,32 @@ An MCP (Model Context Protocol) server that exposes Apple Reminders operations a
 
 ## Installation
 
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/apple-reminders-mcp.git
-cd apple-reminders-mcp
+### Homebrew (Recommended)
 
-# Install with uv
+```bash
+brew install 0xalexb/tap/apple-reminders-mcp
+```
+
+### Using uvx (if you already have uv)
+
+No installation needed — configure your MCP client to use uvx directly:
+
+```json
+{
+  "mcpServers": {
+    "apple-reminders": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/0xalexb/apple-reminders-mcp", "apple-reminders-mcp"]
+    }
+  }
+}
+```
+
+### From source (development)
+
+```bash
+git clone https://github.com/0xalexb/apple-reminders-mcp.git
+cd apple-reminders-mcp
 uv sync
 ```
 
@@ -25,8 +45,7 @@ Add to your Claude Code MCP settings (`~/.claude/settings.json` or project `.mcp
 {
   "mcpServers": {
     "apple-reminders": {
-      "command": "uv",
-      "args": ["run", "--directory", "/path/to/apple-reminders-mcp", "apple-reminders-mcp"]
+      "command": "apple-reminders-mcp"
     }
   }
 }
@@ -40,8 +59,7 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
 {
   "mcpServers": {
     "apple-reminders": {
-      "command": "uv",
-      "args": ["run", "--directory", "/path/to/apple-reminders-mcp", "apple-reminders-mcp"]
+      "command": "apple-reminders-mcp"
     }
   }
 }
@@ -80,6 +98,22 @@ uv run ruff check src/ tests/
 - `src/apple_reminders_mcp/server.py` - FastMCP server with tool definitions
 - `src/apple_reminders_mcp/eventkit_service.py` - EventKit service layer wrapping pyobjc calls
 - `tests/` - Test suite with mocked EventKit objects (runs on any platform)
+
+## Uninstall
+
+### Homebrew
+
+```bash
+brew uninstall apple-reminders-mcp
+# Optional: remove the tap
+brew untap 0xalexb/tap
+```
+
+### uvx
+
+```bash
+uv cache prune
+```
 
 ## License
 
