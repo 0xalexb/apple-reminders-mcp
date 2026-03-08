@@ -182,11 +182,6 @@ def quick_capture(title: str, notes: str | None = None) -> dict:
 
 
 def main():
-    import sys
-    if len(sys.argv) > 1 and sys.argv[1] in ("--version", "-V"):
-        from importlib.metadata import version
-        print(f"apple-reminders-mcp {version('apple-reminders-mcp')}")
-        sys.exit(0)
     mcp.run()
 
 

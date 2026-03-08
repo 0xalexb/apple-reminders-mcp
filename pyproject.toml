@@ -1,6 +1,6 @@
 [project]
 name = "apple-reminders-mcp"
-dynamic = ["version"]
+version = "1"
 description = "MCP server for Apple Reminders via EventKit"
 readme = "README.md"
 license = { text = "MIT" }
@@ -14,12 +14,8 @@ dependencies = [
 apple-reminders-mcp = "apple_reminders_mcp.server:main"
 
 [build-system]
-requires = ["hatchling", "hatch-vcs"]
+requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[tool.hatch.version]
-source = "vcs"
-fallback-version = "0.0.0.dev0"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/apple_reminders_mcp"]
