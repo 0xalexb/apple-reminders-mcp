@@ -88,8 +88,26 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           SHA256: ${{ steps.sha.outputs.sha256 }}
         run: |
-          sed -i "s|url \".*\"|url \"https://github.com/0xalexb/apple-reminders-mcp/releases/download/v${VERSION}/apple-reminders-mcp\"|" Formula/apple-reminders-mcp.rb
-          sed -i "s/sha256 \".*\"/sha256 \"${SHA256}\"/" Formula/apple-reminders-mcp.rb
+          cat > Formula/apple-reminders-mcp.rb <<FORMULA_EOF
+          class AppleRemindersMcp < Formula
+            desc "MCP server for Apple Reminders via EventKit"
+            homepage "https://github.com/0xalexb/apple-reminders-mcp"
+            url "https://github.com/0xalexb/apple-reminders-mcp/releases/download/v${VERSION}/apple-reminders-mcp"
+            sha256 "${SHA256}"
+            license "MIT"
+
+            depends_on :macos
+            depends_on "uv"
+
+            def install
+              bin.install "apple-reminders-mcp"
+            end
+
+            test do
+              assert_match "apple-reminders-mcp", shell_output("#{bin}/apple-reminders-mcp --version 2>&1")
+            end
+          end
+          FORMULA_EOF
 
       - name: Commit and push
         env:
