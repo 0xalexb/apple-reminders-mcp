@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import threading
-from datetime import datetime
+from datetime import date, datetime
 
 from mcp.server.fastmcp import FastMCP
 
@@ -55,6 +55,22 @@ def _format_reminder(reminder) -> dict:
         "notes": reminder.notes(),
         "list": reminder.calendar().title() if reminder.calendar() else None,
     }
+
+
+def _format_completion_date(ns_date) -> str | None:
+    if ns_date is None:
+        return None
+    return datetime.fromtimestamp(
+        ns_date.timeIntervalSince1970()
+    ).isoformat()
+
+
+def _format_completed_reminder(reminder) -> dict:
+    data = _format_reminder(reminder)
+    data["completion_date"] = _format_completion_date(
+        reminder.completionDate()
+    )
+    return data
 
 
 @mcp.tool()
@@ -112,6 +128,15 @@ def show_all_incomplete_reminders() -> dict:
             grouped[list_name] = []
         grouped[list_name].append(_format_reminder(r))
     return grouped
+
+
+@mcp.tool()
+def show_completed_reminders_today(day: str | None = None) -> list[dict]:
+    """Returns reminders completed on the given day (ISO date YYYY-MM-DD, defaults to today)."""
+    service = _get_service()
+    target_day = date.fromisoformat(day) if day else None
+    reminders = service.get_completed_reminders_for_day(target_day)
+    return [_format_completed_reminder(r) for r in reminders]
 
 
 @mcp.tool()
