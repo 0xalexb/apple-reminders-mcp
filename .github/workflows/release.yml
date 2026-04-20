@@ -26,40 +26,10 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Extract version from tag
-        id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Generate wrapper script
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          cat > apple-reminders-mcp <<'SCRIPT_EOF'
-          #!/bin/bash
-          VERSION="__VERSION__"
-          CACHE_MARKER="${HOME}/.cache/apple-reminders-mcp-version"
-
-          if [ -f "$CACHE_MARKER" ]; then
-              OLD_VERSION=$(cat "$CACHE_MARKER")
-              if [ "$OLD_VERSION" != "$VERSION" ]; then
-                  uv cache prune --quiet 2>/dev/null
-              fi
-          fi
-          mkdir -p "$(dirname "$CACHE_MARKER")"
-          echo "$VERSION" > "$CACHE_MARKER"
-
-          exec uvx --from "git+https://github.com/0xalexb/apple-reminders-mcp@v${VERSION}" apple-reminders-mcp "$@"
-          SCRIPT_EOF
-          sed -i "s/__VERSION__/${VERSION}/" apple-reminders-mcp
-          chmod +x apple-reminders-mcp
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: apple-reminders-mcp
 
   update-homebrew:
     needs: release
@@ -69,13 +39,13 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Download script and compute sha256
+      - name: Compute source tarball sha256
         id: sha
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          curl -sL "https://github.com/0xalexb/apple-reminders-mcp/releases/download/v${VERSION}/apple-reminders-mcp" -o apple-reminders-mcp
-          echo "sha256=$(shasum -a 256 apple-reminders-mcp | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+          curl -sL "https://github.com/0xalexb/apple-reminders-mcp/archive/refs/tags/v${VERSION}.tar.gz" -o source.tar.gz
+          echo "sha256=$(shasum -a 256 source.tar.gz | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
 
       - name: Checkout homebrew-apps
         uses: actions/checkout@v4
@@ -92,7 +62,7 @@ jobs:
           class AppleRemindersMcp < Formula
             desc "MCP server for Apple Reminders via EventKit"
             homepage "https://github.com/0xalexb/apple-reminders-mcp"
-            url "https://github.com/0xalexb/apple-reminders-mcp/releases/download/v${VERSION}/apple-reminders-mcp"
+            url "https://github.com/0xalexb/apple-reminders-mcp/archive/refs/tags/v${VERSION}.tar.gz"
             sha256 "${SHA256}"
             license "MIT"
 
@@ -100,7 +70,10 @@ jobs:
             depends_on "uv"
 
             def install
-              bin.install "apple-reminders-mcp"
+              venv = libexec/"venv"
+              system "uv", "venv", "--python", "3.11", venv
+              system "uv", "pip", "install", "--python", venv/"bin/python", "."
+              bin.install_symlink venv/"bin/apple-reminders-mcp"
             end
 
             test do
