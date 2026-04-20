@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import threading
-from datetime import date, datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 
@@ -100,25 +100,6 @@ class EventKitService:
         calendars = self.get_all_lists()
         return self._fetch_incomplete_reminders(calendars)
 
-    def get_completed_reminders_for_day(
-        self, day: date | None = None
-    ) -> list[Any]:
-        """Fetch reminders completed on a given day (defaults to today)."""
-        if day is None:
-            day = date.today()
-        start = datetime(day.year, day.month, day.day)
-        end = start + timedelta(days=1)
-        calendars = self.get_all_lists()
-        predicate = (
-            self._store
-            .predicateForCompletedRemindersWithCompletionDateStarting_ending_calendars_(
-                self._datetime_to_nsdate(start),
-                self._datetime_to_nsdate(end),
-                calendars,
-            )
-        )
-        return self._fetch_matching(predicate)
-
     def _fetch_incomplete_reminders(self, calendars: list[Any]) -> list[Any]:
         predicate = (
             self._store
@@ -126,9 +107,6 @@ class EventKitService:
                 None, None, calendars
             )
         )
-        return self._fetch_matching(predicate)
-
-    def _fetch_matching(self, predicate: Any) -> list[Any]:
         event = threading.Event()
         result: list[Any | None] = [None]
 
@@ -142,14 +120,6 @@ class EventKitService:
         if not event.wait(timeout=30):
             raise TimeoutError("Timed out fetching reminders")
         return list(result[0]) if result[0] else []
-
-    def _datetime_to_nsdate(self, dt: datetime) -> Any:
-        """Convert a Python datetime to an NSDate."""
-        import Foundation
-
-        return Foundation.NSDate.dateWithTimeIntervalSince1970_(
-            dt.timestamp()
-        )
 
     def create_reminder(
         self,

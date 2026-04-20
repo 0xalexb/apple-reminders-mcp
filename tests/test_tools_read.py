@@ -1,20 +1,16 @@
 from __future__ import annotations
 
-from datetime import date, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from apple_reminders_mcp.server import (
-    _format_completed_reminder,
-    _format_completion_date,
     _format_due_date,
     _format_priority,
     _format_reminder,
     create_list,
     list_reminder_lists,
     show_all_incomplete_reminders,
-    show_completed_reminders_today,
     show_incomplete_reminders,
 )
 
@@ -51,7 +47,6 @@ class MockReminder:
         priority: int = 0,
         notes: str | None = None,
         due_components=None,
-        completion_date=None,
     ):
         self._title = title
         self._identifier = identifier
@@ -59,7 +54,6 @@ class MockReminder:
         self._priority = priority
         self._notes = notes
         self._due = due_components
-        self._completion_date = completion_date
 
     def title(self):
         return self._title
@@ -78,17 +72,6 @@ class MockReminder:
 
     def dueDateComponents(self):
         return self._due
-
-    def completionDate(self):
-        return self._completion_date
-
-
-class MockNSDate:
-    def __init__(self, timestamp: float):
-        self._timestamp = timestamp
-
-    def timeIntervalSince1970(self):
-        return self._timestamp
 
 
 class MockDateComponents:
@@ -387,96 +370,3 @@ class TestShowAllIncompleteReminders:
 
         assert "Unknown" in result
         assert result["Unknown"][0]["title"] == "Orphan"
-
-
-# ---------------------------------------------------------------------------
-# Tests: completion date formatting + completed reminder formatting
-# ---------------------------------------------------------------------------
-
-
-class TestFormatCompletionDate:
-    def test_none(self):
-        assert _format_completion_date(None) is None
-
-    def test_formats_iso(self):
-        ts = datetime(2026, 4, 20, 14, 30, 5).timestamp()
-        assert (
-            _format_completion_date(MockNSDate(ts))
-            == "2026-04-20T14:30:05"
-        )
-
-
-class TestFormatCompletedReminder:
-    def test_includes_completion_date(self):
-        cal = MockCalendar("Work")
-        ts = datetime(2026, 4, 20, 9, 0).timestamp()
-        rem = MockReminder(
-            title="Done",
-            identifier="rem-9",
-            calendar=cal,
-            completion_date=MockNSDate(ts),
-        )
-
-        result = _format_completed_reminder(rem)
-
-        assert result["id"] == "rem-9"
-        assert result["title"] == "Done"
-        assert result["list"] == "Work"
-        assert result["completion_date"] == "2026-04-20T09:00:00"
-
-    def test_missing_completion_date(self):
-        cal = MockCalendar("Work")
-        rem = MockReminder(title="Done", identifier="rem-9", calendar=cal)
-
-        result = _format_completed_reminder(rem)
-
-        assert result["completion_date"] is None
-
-
-# ---------------------------------------------------------------------------
-# Tests: show_completed_reminders_today
-# ---------------------------------------------------------------------------
-
-
-class TestShowCompletedRemindersToday:
-    def test_defaults_to_today(self, mock_service):
-        cal = MockCalendar("Work")
-        ts = datetime(2026, 4, 20, 9, 0).timestamp()
-        rem = MockReminder(
-            title="Finished",
-            identifier="rem-1",
-            calendar=cal,
-            completion_date=MockNSDate(ts),
-        )
-        mock_service.get_completed_reminders_for_day.return_value = [rem]
-
-        result = show_completed_reminders_today()
-
-        assert result == [
-            {
-                "id": "rem-1",
-                "title": "Finished",
-                "due_date": None,
-                "priority": "none",
-                "notes": None,
-                "list": "Work",
-                "completion_date": "2026-04-20T09:00:00",
-            }
-        ]
-        mock_service.get_completed_reminders_for_day.assert_called_once_with(
-            None
-        )
-
-    def test_specific_day(self, mock_service):
-        mock_service.get_completed_reminders_for_day.return_value = []
-
-        result = show_completed_reminders_today("2026-04-19")
-
-        assert result == []
-        mock_service.get_completed_reminders_for_day.assert_called_once_with(
-            date(2026, 4, 19)
-        )
-
-    def test_invalid_date_raises(self, mock_service):
-        with pytest.raises(ValueError):
-            show_completed_reminders_today("not-a-date")
