@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
+from datetime import date, datetime, timezone, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -261,6 +261,51 @@ class TestGetAllIncompleteReminders:
         svc, _, _ = _make_service(calendars=[], reminders=None)
 
         assert svc.get_all_incomplete_reminders() == []
+
+
+# ---------------------------------------------------------------------------
+# Tests: get_completed_reminders_for_day
+# ---------------------------------------------------------------------------
+
+class TestGetCompletedRemindersForDay:
+    def test_returns_reminders_for_specified_day(self):
+        cal = MockCalendar("Work")
+        rem = MockReminder("Finished task")
+        svc, store, _ = _make_service(calendars=[cal], reminders=[rem])
+
+        mock_foundation = MagicMock()
+        with patch.dict("sys.modules", {"Foundation": mock_foundation}):
+            result = svc.get_completed_reminders_for_day(date(2026, 4, 20))
+
+        assert result == [rem]
+        store.predicateForCompletedRemindersWithCompletionDateStarting_ending_calendars_.assert_called_once()
+        args = store.predicateForCompletedRemindersWithCompletionDateStarting_ending_calendars_.call_args.args
+        assert args[2] == [cal]
+
+    def test_defaults_to_today(self):
+        cal = MockCalendar("Work")
+        svc, store, _ = _make_service(calendars=[cal], reminders=None)
+
+        mock_foundation = MagicMock()
+        with patch.dict("sys.modules", {"Foundation": mock_foundation}):
+            result = svc.get_completed_reminders_for_day()
+
+        assert result == []
+        # Verify NSDate conversion used today's midnight and next midnight
+        calls = mock_foundation.NSDate.dateWithTimeIntervalSince1970_.call_args_list
+        assert len(calls) == 2
+        start_ts, end_ts = calls[0].args[0], calls[1].args[0]
+        assert end_ts - start_ts == 24 * 60 * 60
+
+    def test_returns_empty_when_no_reminders(self):
+        cal = MockCalendar("Work")
+        svc, _, _ = _make_service(calendars=[cal], reminders=None)
+
+        mock_foundation = MagicMock()
+        with patch.dict("sys.modules", {"Foundation": mock_foundation}):
+            result = svc.get_completed_reminders_for_day(date(2026, 4, 20))
+
+        assert result == []
 
 
 # ---------------------------------------------------------------------------
