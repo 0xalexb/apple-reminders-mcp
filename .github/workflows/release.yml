@@ -2,21 +2,17 @@ name: Release
 
 on:
   push:
-    tags:
-      - "v*"
+    tags: ["v*"]
 
 jobs:
   test:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Install uv
         uses: astral-sh/setup-uv@v4
-
       - name: Install dependencies
         run: uv sync
-
       - name: Run tests
         run: uv run pytest
 
@@ -28,31 +24,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Extract version from tag
+      - name: Extract version
         id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
       - name: Generate wrapper script
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_VERSION: ${{ steps.version.outputs.VERSION }}
         run: |
-          cat > apple-reminders-mcp <<'SCRIPT_EOF'
-          #!/bin/bash
+          cat > apple-reminders-mcp <<'SCRIPT'
+          #!/usr/bin/env bash
+          set -euo pipefail
           VERSION="__VERSION__"
-          CACHE_MARKER="${HOME}/.cache/apple-reminders-mcp-version"
 
-          if [ -f "$CACHE_MARKER" ]; then
-              OLD_VERSION=$(cat "$CACHE_MARKER")
-              if [ "$OLD_VERSION" != "$VERSION" ]; then
-                  uv cache prune --quiet 2>/dev/null
-              fi
+          if [[ "${1:-}" == "--version" || "${1:-}" == "-V" ]]; then
+            echo "apple-reminders-mcp ${VERSION}"
+            exit 0
           fi
-          mkdir -p "$(dirname "$CACHE_MARKER")"
-          echo "$VERSION" > "$CACHE_MARKER"
 
           exec uvx --from "git+https://github.com/0xalexb/apple-reminders-mcp@v${VERSION}" apple-reminders-mcp "$@"
-          SCRIPT_EOF
-          sed -i "s/__VERSION__/${VERSION}/" apple-reminders-mcp
+          SCRIPT
+          sed -i "s/__VERSION__/${RELEASE_VERSION}/" apple-reminders-mcp
           chmod +x apple-reminders-mcp
 
       - name: Create GitHub Release
@@ -61,39 +53,52 @@ jobs:
           generate_release_notes: true
           files: apple-reminders-mcp
 
-  update-homebrew:
+  homebrew:
     needs: release
     runs-on: ubuntu-latest
     steps:
-      - name: Extract version from tag
-        id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Download script and compute sha256
-        id: sha
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
+      - name: Download script and compute checksum
+        id: checksum
         run: |
-          curl -sL "https://github.com/0xalexb/apple-reminders-mcp/releases/download/v${VERSION}/apple-reminders-mcp" -o apple-reminders-mcp
-          echo "sha256=$(shasum -a 256 apple-reminders-mcp | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          REPO="${{ github.repository }}"
+          DOWNLOAD_OK=false
+          for i in 1 2 3 4 5; do
+            if curl -fSL "https://github.com/${REPO}/releases/download/v${VERSION}/apple-reminders-mcp" -o apple-reminders-mcp; then
+              DOWNLOAD_OK=true
+              break
+            fi
+            echo "Attempt $i failed, retrying in 15s..."
+            sleep 15
+          done
+          if [ "$DOWNLOAD_OK" != "true" ]; then
+            echo "::error::Failed to download apple-reminders-mcp after 5 attempts"
+            exit 1
+          fi
+          SHA=$(sha256sum apple-reminders-mcp | awk '{print $1}')
+          echo "SHA256=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"
 
-      - name: Checkout homebrew-apps
+      - name: Checkout Homebrew tap
         uses: actions/checkout@v4
         with:
-          repository: 0xalexb/homebrew-apps
+          repository: ${{ github.repository_owner }}/homebrew-apps
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
 
       - name: Update formula
         env:
-          VERSION: ${{ steps.version.outputs.version }}
-          SHA256: ${{ steps.sha.outputs.sha256 }}
+          RELEASE_VERSION: ${{ steps.checksum.outputs.VERSION }}
+          RELEASE_SHA: ${{ steps.checksum.outputs.SHA256 }}
+          RELEASE_REPO: ${{ github.repository }}
         run: |
-          cat > Formula/apple-reminders-mcp.rb <<FORMULA_EOF
+          cat > homebrew-tap/Formula/apple-reminders-mcp.rb <<FORMULA
           class AppleRemindersMcp < Formula
             desc "MCP server for Apple Reminders via EventKit"
-            homepage "https://github.com/0xalexb/apple-reminders-mcp"
-            url "https://github.com/0xalexb/apple-reminders-mcp/releases/download/v${VERSION}/apple-reminders-mcp"
-            sha256 "${SHA256}"
+            homepage "https://github.com/${RELEASE_REPO}"
+            url "https://github.com/${RELEASE_REPO}/releases/download/v${RELEASE_VERSION}/apple-reminders-mcp"
+            sha256 "${RELEASE_SHA}"
+            version "${RELEASE_VERSION}"
             license "MIT"
 
             depends_on :macos
@@ -104,17 +109,16 @@ jobs:
             end
 
             test do
-              assert_match "apple-reminders-mcp", shell_output("#{bin}/apple-reminders-mcp --version 2>&1")
+              assert_match version.to_s, shell_output("#{bin}/apple-reminders-mcp --version")
             end
           end
-          FORMULA_EOF
+          FORMULA
 
-      - name: Commit and push
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
+      - name: Commit and push formula
+        working-directory: homebrew-tap
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Formula/apple-reminders-mcp.rb
-          git commit -m "Update apple-reminders-mcp to ${VERSION}"
+          git commit -m "apple-reminders-mcp ${GITHUB_REF#refs/tags/v}"
           git push
