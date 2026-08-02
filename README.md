@@ -1,6 +1,6 @@
 # Apple Reminders MCP Server
 
-An MCP (Model Context Protocol) server that exposes Apple Reminders operations as tools, built with [FastMCP](https://github.com/modelcontextprotocol/python-sdk) and [pyobjc-framework-EventKit](https://pypi.org/project/pyobjc-framework-EventKit/).
+An MCP (Model Context Protocol) server that exposes Apple Reminders operations as tools, built with the [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk) and [pyobjc-framework-EventKit](https://pypi.org/project/pyobjc-framework-EventKit/).
 
 > **Note:** This server requires macOS with access to Apple Reminders via EventKit.
 
@@ -95,7 +95,7 @@ uv run ruff check src/ tests/
 
 ## Architecture
 
-- `src/apple_reminders_mcp/server.py` - FastMCP server with tool definitions
+- `src/apple_reminders_mcp/server.py` - MCPServer with tool definitions
 - `src/apple_reminders_mcp/eventkit_service.py` - EventKit service layer wrapping pyobjc calls
 - `tests/` - Test suite with mocked EventKit objects (runs on any platform)
 

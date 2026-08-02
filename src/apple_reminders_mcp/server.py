@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import threading
 from datetime import date, datetime
+from importlib.metadata import version
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
 
 from apple_reminders_mcp.eventkit_service import EventKitService
 
-mcp = FastMCP("apple-reminders")
+mcp = MCPServer("apple-reminders", version=version("apple-reminders-mcp"))
 
 _service: EventKitService | None = None
 _service_lock = threading.Lock()
@@ -209,7 +210,6 @@ def quick_capture(title: str, notes: str | None = None) -> dict:
 def main():
     import sys
     if len(sys.argv) > 1 and sys.argv[1] in ("--version", "-V"):
-        from importlib.metadata import version
         print(f"apple-reminders-mcp {version('apple-reminders-mcp')}")
         sys.exit(0)
     mcp.run()
