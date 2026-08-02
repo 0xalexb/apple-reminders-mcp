@@ -11,7 +11,7 @@
 
 ## Architecture
 
-- `src/apple_reminders_mcp/server.py` - FastMCP tool definitions, formatting helpers, lazy-init service
+- `src/apple_reminders_mcp/server.py` - MCPServer tool definitions, formatting helpers, lazy-init service
 - `src/apple_reminders_mcp/eventkit_service.py` - EventKit wrapper; all pyobjc calls are isolated here
 - Tests mock EventKit objects since pyobjc only works on macOS
 

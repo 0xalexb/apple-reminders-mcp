@@ -15,6 +15,11 @@ jobs:
         run: uv sync
       - name: Run tests
         run: uv run pytest
+      # uv.lock does not apply to `uvx --from git+...`, which is how the released
+      # wrapper runs. Resolve fresh from PyPI so an unbounded dependency that
+      # breaks at runtime fails the release instead of shipping green.
+      - name: Verify fresh dependency resolution
+        run: uvx --from . apple-reminders-mcp --version
 
   release:
     needs: test
