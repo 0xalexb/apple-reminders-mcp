@@ -55,6 +55,9 @@ def _format_reminder(reminder) -> dict:
         "priority": _format_priority(reminder.priority()),
         "notes": reminder.notes(),
         "list": reminder.calendar().title() if reminder.calendar() else None,
+        "list_id": (
+            reminder.calendar().calendarIdentifier() if reminder.calendar() else None
+        ),
     }
 
 
@@ -94,6 +97,7 @@ def list_reminder_lists() -> list[dict]:
             counts[cal_id] = counts.get(cal_id, 0) + 1
     return [
         {
+            "id": cal.calendarIdentifier(),
             "name": cal.title(),
             "incomplete_count": counts.get(cal.calendarIdentifier(), 0),
         }
@@ -110,10 +114,12 @@ def create_list(name: str) -> dict:
 
 
 @mcp.tool()
-def show_incomplete_reminders(list_name: str) -> list[dict]:
-    """Returns incomplete reminders for a specific list with title, due date, priority, and notes."""
+def show_incomplete_reminders(
+    list_name: str | None = None, list_id: str | None = None
+) -> list[dict]:
+    """Returns incomplete reminders for a specific list with title, due date, priority, and notes. Provide list_name, list_id (preferred, unique and stable across renames), or both."""
     service = _get_service()
-    reminders = service.get_incomplete_reminders(list_name)
+    reminders = service.get_incomplete_reminders(list_name, list_id)
     return [_format_reminder(r) for r in reminders]
 
 
@@ -144,12 +150,13 @@ def show_completed_reminders_today(day: str | None = None) -> list[dict]:
 def create_reminder(
     title: str,
     list_name: str | None = None,
+    list_id: str | None = None,
     due_date: str | None = None,
     priority: str = "none",
     recurrence: str | None = None,
     notes: str | None = None,
 ) -> dict:
-    """Creates a reminder. Optional: list_name (defaults to default list), due_date (ISO 8601 e.g. '2026-03-15' or '2026-03-15T10:30:00'), priority (none/low/medium/high), recurrence (daily/weekly/monthly/yearly), notes."""
+    """Creates a reminder. Optional: list_name or list_id (preferred, unique and stable across renames; defaults to the default list), due_date (ISO 8601 e.g. '2026-03-15' or '2026-03-15T10:30:00'), priority (none/low/medium/high), recurrence (daily/weekly/monthly/yearly), notes."""
     service = _get_service()
     priority_lower = priority.lower()
     if priority_lower not in _PRIORITY_VALUES:
@@ -166,6 +173,7 @@ def create_reminder(
     reminder = service.create_reminder(
         title=title,
         list_name=list_name,
+        list_id=list_id,
         due_date=parsed_due,
         priority=priority_int,
         recurrence=recurrence,
@@ -192,10 +200,14 @@ def delete_reminder(reminder_id: str) -> dict:
 
 
 @mcp.tool()
-def move_reminder(reminder_id: str, target_list_name: str) -> dict:
-    """Moves a reminder to a different list. Takes the reminder's id and the target list name."""
+def move_reminder(
+    reminder_id: str,
+    target_list_name: str | None = None,
+    target_list_id: str | None = None,
+) -> dict:
+    """Moves a reminder to a different list. Provide target_list_name, target_list_id (preferred, unique and stable across renames), or both."""
     service = _get_service()
-    reminder = service.move_reminder(reminder_id, target_list_name)
+    reminder = service.move_reminder(reminder_id, target_list_name, target_list_id)
     return _format_reminder(reminder)
 
 

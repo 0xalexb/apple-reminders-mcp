@@ -60,11 +60,37 @@ class EventKitService:
         return list(calendars) if calendars else []
 
     def get_list_by_name(self, name: str) -> Any | None:
-        """Find a specific reminder list by name."""
+        """Find a specific reminder list by name.
+
+        Reminders permits two lists with the same title, in which case this returns whichever
+        comes first. Prefer `get_list_by_id` where the caller has an identifier — a title is not
+        a key, and this cannot tell the caller that it had to choose.
+        """
         for cal in self.get_all_lists():
             if cal.title() == name:
                 return cal
         return None
+
+    def get_list_by_id(self, calendar_id: str) -> Any | None:
+        """Find a reminder list by its calendar identifier: unique, and stable across renames."""
+        for cal in self.get_all_lists():
+            if cal.calendarIdentifier() == calendar_id:
+                return cal
+        return None
+
+    def resolve_list(self, name: str | None = None, calendar_id: str | None = None) -> Any:
+        """Resolve a list from an id, a name, or both. The id wins when both are given."""
+        if calendar_id:
+            calendar = self.get_list_by_id(calendar_id)
+            if calendar is None:
+                raise ValueError(f"List with id '{calendar_id}' not found")
+            return calendar
+        if name:
+            calendar = self.get_list_by_name(name)
+            if calendar is None:
+                raise ValueError(f"List '{name}' not found")
+            return calendar
+        raise ValueError("Provide list_name or list_id")
 
     def create_list(self, name: str) -> Any:
         """Create a new reminder list."""
@@ -88,12 +114,11 @@ class EventKitService:
             raise RuntimeError(f"Failed to create list: {error}")
         return calendar
 
-    def get_incomplete_reminders(self, list_name: str) -> list[Any]:
-        """Fetch incomplete reminders for a specific list."""
-        calendar = self.get_list_by_name(list_name)
-        if calendar is None:
-            raise ValueError(f"List '{list_name}' not found")
-        return self._fetch_incomplete_reminders([calendar])
+    def get_incomplete_reminders(
+        self, list_name: str | None = None, list_id: str | None = None
+    ) -> list[Any]:
+        """Fetch incomplete reminders for a specific list, by id or by name."""
+        return self._fetch_incomplete_reminders([self.resolve_list(list_name, list_id)])
 
     def get_all_incomplete_reminders(self) -> list[Any]:
         """Fetch incomplete reminders across all lists."""
@@ -156,6 +181,7 @@ class EventKitService:
         title: str,
         list_name: str | None = None,
         due_date: datetime | None = None,
+        list_id: str | None = None,
         priority: int = 0,
         recurrence: str | None = None,
         notes: str | None = None,
@@ -165,11 +191,8 @@ class EventKitService:
         reminder = self._ek.EKReminder.reminderWithEventStore_(self._store)
         reminder.setTitle_(title)
 
-        if list_name is not None:
-            calendar = self.get_list_by_name(list_name)
-            if calendar is None:
-                raise ValueError(f"List '{list_name}' not found")
-            reminder.setCalendar_(calendar)
+        if list_name is not None or list_id is not None:
+            reminder.setCalendar_(self.resolve_list(list_name, list_id))
         else:
             default_cal = self._store.defaultCalendarForNewReminders()
             if default_cal is None:
@@ -225,15 +248,17 @@ class EventKitService:
         if not success:
             raise RuntimeError(f"Failed to delete reminder: {error}")
 
-    def move_reminder(self, reminder_id: str, target_list_name: str) -> Any:
-        """Move a reminder to a different list."""
+    def move_reminder(
+        self,
+        reminder_id: str,
+        target_list_name: str | None = None,
+        target_list_id: str | None = None,
+    ) -> Any:
+        """Move a reminder to a different list, named by id or by name."""
         reminder = self._find_reminder_by_id(reminder_id)
         if reminder is None:
             raise ValueError(f"Reminder '{reminder_id}' not found")
-        calendar = self.get_list_by_name(target_list_name)
-        if calendar is None:
-            raise ValueError(f"List '{target_list_name}' not found")
-        reminder.setCalendar_(calendar)
+        reminder.setCalendar_(self.resolve_list(target_list_name, target_list_id))
         success, error = self._store.saveReminder_commit_error_(
             reminder, True, None
         )
