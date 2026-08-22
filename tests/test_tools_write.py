@@ -127,6 +127,7 @@ class TestCreateReminder:
         mock_service.create_reminder.assert_called_once_with(
             title="Buy milk",
             list_name=None,
+            list_id=None,
             due_date=None,
             priority=0,
             recurrence=None,
@@ -288,7 +289,7 @@ class TestMoveReminder:
         assert result["title"] == "Moved task"
         assert result["list"] == "Personal"
         mock_service.move_reminder.assert_called_once_with(
-            "rem-7", "Personal"
+            "rem-7", "Personal", None
         )
 
     def test_reminder_not_found_propagates(self, mock_service):
@@ -347,3 +348,28 @@ class TestQuickCapture:
         mock_service.create_reminder.assert_called_once_with(
             title="Idea", notes="Some details"
         )
+
+
+class TestListIdentifiersOnWrites:
+    """Creating into, or moving into, a duplicated list name is ambiguous the same way reads are."""
+
+    def test_create_passes_the_id_through(self, mock_service):
+        mock_service.create_reminder.return_value = MockReminder(
+            title="Ship it", identifier="rem-1"
+        )
+        create_reminder("Ship it", list_id="cal-b")
+        assert mock_service.create_reminder.call_args.kwargs["list_id"] == "cal-b"
+
+    def test_move_passes_the_id_through(self, mock_service):
+        mock_service.move_reminder.return_value = MockReminder(
+            title="Ship it", identifier="rem-1"
+        )
+        move_reminder("rem-1", target_list_id="cal-b")
+        mock_service.move_reminder.assert_called_once_with("rem-1", None, "cal-b")
+
+    def test_move_still_accepts_a_name_alone(self, mock_service):
+        mock_service.move_reminder.return_value = MockReminder(
+            title="Ship it", identifier="rem-1"
+        )
+        move_reminder("rem-1", "Personal")
+        mock_service.move_reminder.assert_called_once_with("rem-1", "Personal", None)

@@ -177,7 +177,7 @@ class TestFormatDueDate:
 
 class TestFormatReminder:
     def test_full_reminder(self):
-        cal = MockCalendar("Work")
+        cal = MockCalendar("Work", identifier="cal-work")
         due = MockDateComponents(2026, 3, 15, 10, 30)
         rem = MockReminder(
             title="Buy milk",
@@ -197,10 +197,11 @@ class TestFormatReminder:
             "priority": "high",
             "notes": "Whole milk",
             "list": "Work",
+            "list_id": "cal-work",
         }
 
     def test_minimal_reminder(self):
-        cal = MockCalendar("Default")
+        cal = MockCalendar("Default", identifier="cal-default")
         rem = MockReminder(title="Simple", identifier="rem-2", calendar=cal)
 
         result = _format_reminder(rem)
@@ -212,6 +213,7 @@ class TestFormatReminder:
             "priority": "none",
             "notes": None,
             "list": "Default",
+            "list_id": "cal-default",
         }
 
     def test_reminder_without_calendar(self):
@@ -229,8 +231,8 @@ class TestFormatReminder:
 
 class TestListReminderLists:
     def test_returns_lists_with_counts(self, mock_service):
-        cal_work = MockCalendar("Work")
-        cal_personal = MockCalendar("Personal")
+        cal_work = MockCalendar("Work", identifier="cal-work")
+        cal_personal = MockCalendar("Personal", identifier="cal-personal")
         mock_service.get_all_lists.return_value = [cal_work, cal_personal]
 
         rem1 = MockReminder("Task 1", calendar=cal_work)
@@ -245,8 +247,8 @@ class TestListReminderLists:
         result = list_reminder_lists()
 
         assert result == [
-            {"name": "Work", "incomplete_count": 2},
-            {"name": "Personal", "incomplete_count": 1},
+            {"id": "cal-work", "name": "Work", "incomplete_count": 2},
+            {"id": "cal-personal", "name": "Personal", "incomplete_count": 1},
         ]
 
     def test_empty_lists(self, mock_service):
@@ -256,13 +258,15 @@ class TestListReminderLists:
         assert list_reminder_lists() == []
 
     def test_list_with_zero_reminders(self, mock_service):
-        cal = MockCalendar("Empty")
+        cal = MockCalendar("Empty", identifier="cal-empty")
         mock_service.get_all_lists.return_value = [cal]
         mock_service.get_all_incomplete_reminders.return_value = []
 
         result = list_reminder_lists()
 
-        assert result == [{"name": "Empty", "incomplete_count": 0}]
+        assert result == [
+            {"id": "cal-empty", "name": "Empty", "incomplete_count": 0}
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -288,7 +292,7 @@ class TestCreateList:
 
 class TestShowIncompleteReminders:
     def test_returns_formatted_reminders(self, mock_service):
-        cal = MockCalendar("Work")
+        cal = MockCalendar("Work", identifier="cal-work")
         due = MockDateComponents(2026, 3, 15, 10, 30)
         rem = MockReminder(
             title="Buy milk",
@@ -310,9 +314,10 @@ class TestShowIncompleteReminders:
                 "priority": "high",
                 "notes": "Whole milk",
                 "list": "Work",
+                "list_id": "cal-work",
             }
         ]
-        mock_service.get_incomplete_reminders.assert_called_once_with("Work")
+        mock_service.get_incomplete_reminders.assert_called_once_with("Work", None)
 
     def test_empty_list(self, mock_service):
         mock_service.get_incomplete_reminders.return_value = []
@@ -320,7 +325,7 @@ class TestShowIncompleteReminders:
         assert show_incomplete_reminders("Work") == []
 
     def test_reminder_without_optional_fields(self, mock_service):
-        cal = MockCalendar("Work")
+        cal = MockCalendar("Work", identifier="cal-work")
         rem = MockReminder(
             title="Simple task", identifier="rem-2", calendar=cal
         )
@@ -336,6 +341,7 @@ class TestShowIncompleteReminders:
                 "priority": "none",
                 "notes": None,
                 "list": "Work",
+                "list_id": "cal-work",
             }
         ]
 
@@ -408,7 +414,7 @@ class TestFormatCompletionDate:
 
 class TestFormatCompletedReminder:
     def test_includes_completion_date(self):
-        cal = MockCalendar("Work")
+        cal = MockCalendar("Work", identifier="cal-work")
         ts = datetime(2026, 4, 20, 9, 0).timestamp()
         rem = MockReminder(
             title="Done",
@@ -440,7 +446,7 @@ class TestFormatCompletedReminder:
 
 class TestShowCompletedRemindersToday:
     def test_defaults_to_today(self, mock_service):
-        cal = MockCalendar("Work")
+        cal = MockCalendar("Work", identifier="cal-work")
         ts = datetime(2026, 4, 20, 9, 0).timestamp()
         rem = MockReminder(
             title="Finished",
@@ -460,6 +466,7 @@ class TestShowCompletedRemindersToday:
                 "priority": "none",
                 "notes": None,
                 "list": "Work",
+                "list_id": "cal-work",
                 "completion_date": "2026-04-20T09:00:00",
             }
         ]
@@ -480,3 +487,49 @@ class TestShowCompletedRemindersToday:
     def test_invalid_date_raises(self, mock_service):
         with pytest.raises(ValueError):
             show_completed_reminders_today("not-a-date")
+
+
+# ---------------------------------------------------------------------------
+# Tests: list identifiers on the tool surface
+#
+# `apple-calendar-mcp` already returns `calendar_id` everywhere and documents it
+# as "preferred, stable across renames". These bring this server to parity.
+# ---------------------------------------------------------------------------
+
+
+class TestListIdentifiers:
+    def test_two_lists_sharing_a_name_are_distinguishable_by_id(self, mock_service):
+        """The case the ids exist for. Without them these two rows are identical."""
+        a = MockCalendar("Projects", identifier="cal-a")
+        b = MockCalendar("Projects", identifier="cal-b")
+        mock_service.get_all_lists.return_value = [a, b]
+        mock_service.get_all_incomplete_reminders.return_value = []
+
+        result = list_reminder_lists()
+
+        assert [row["id"] for row in result] == ["cal-a", "cal-b"]
+        assert {row["name"] for row in result} == {"Projects"}
+
+    def test_a_reminder_carries_the_id_of_the_list_holding_it(self, mock_service):
+        cal = MockCalendar("Projects", identifier="cal-b")
+        rem = MockReminder(title="Ship it", identifier="rem-9", calendar=cal)
+        mock_service.get_incomplete_reminders.return_value = [rem]
+
+        result = show_incomplete_reminders(list_id="cal-b")
+
+        assert result[0]["list_id"] == "cal-b"
+        mock_service.get_incomplete_reminders.assert_called_once_with(None, "cal-b")
+
+    def test_an_id_is_passed_through_in_preference_to_a_name(self, mock_service):
+        mock_service.get_incomplete_reminders.return_value = []
+        show_incomplete_reminders(list_name="Projects", list_id="cal-b")
+        mock_service.get_incomplete_reminders.assert_called_once_with("Projects", "cal-b")
+
+    def test_a_reminder_with_no_list_reports_no_id(self, mock_service):
+        rem = MockReminder(title="Orphan", identifier="rem-0", calendar=None)
+        mock_service.get_incomplete_reminders.return_value = [rem]
+
+        result = show_incomplete_reminders(list_name="Whatever")
+
+        assert result[0]["list"] is None
+        assert result[0]["list_id"] is None

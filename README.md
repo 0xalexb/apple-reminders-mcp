@@ -70,14 +70,14 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
 | Tool | Description |
 |------|-------------|
 | `ping` | Health check - returns "pong" |
-| `list_reminder_lists` | Returns all reminder list names and their incomplete reminder counts |
+| `list_reminder_lists` | Returns every list's `id`, name, and incomplete reminder count |
 | `create_list` | Creates a new reminder list |
-| `show_incomplete_reminders` | Returns incomplete reminders for a specific list with title, due date, priority, and notes |
+| `show_incomplete_reminders` | Returns incomplete reminders for a list, by `list_id` (preferred) or `list_name` |
 | `show_all_incomplete_reminders` | Returns all incomplete reminders grouped by list |
-| `create_reminder` | Creates a reminder with optional list, due date (ISO 8601), priority (none/low/medium/high), recurrence (daily/weekly/monthly/yearly), and notes |
+| `create_reminder` | Creates a reminder with optional list (`list_id` or `list_name`), due date (ISO 8601), priority (none/low/medium/high), recurrence (daily/weekly/monthly/yearly), and notes |
 | `complete_reminder` | Marks a reminder as completed by its ID |
 | `delete_reminder` | Deletes a reminder by its ID |
-| `move_reminder` | Moves a reminder to a different list |
+| `move_reminder` | Moves a reminder to a different list, by `target_list_id` (preferred) or `target_list_name` |
 | `quick_capture` | Quickly captures a reminder in the default list with just a title and optional notes |
 
 ## Development
@@ -118,3 +118,16 @@ uv cache prune
 ## License
 
 MIT
+
+## List identifiers
+
+Reminders permits two lists with the same name. A title is therefore not a key: a name-keyed lookup
+picks whichever list it reaches first, with no signal that it had to choose, and reminders from both
+lists look identical once returned.
+
+Every list carries a `calendarIdentifier` that is unique and stable across renames. It is exposed as
+`id` on `list_reminder_lists` and as `list_id` on every reminder, and the tools that take a list
+accept `list_id` / `target_list_id` alongside the name. Where both are given, the id wins.
+
+Prefer the id wherever one is available. `apple-calendar-mcp` has always worked this way; this brings
+the two servers into line.

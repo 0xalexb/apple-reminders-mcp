@@ -685,3 +685,54 @@ class TestMakeDateComponents:
         mock_components.setDay_.assert_called_once_with(15)
         mock_components.setHour_.assert_not_called()
         mock_components.setMinute_.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Tests: resolving a list by id
+#
+# Reminders permits two lists with the same title. Every name-keyed lookup then
+# silently picks one, which is why identifiers exist on the API at all.
+# ---------------------------------------------------------------------------
+
+
+class TestResolveList:
+    def _service(self, calendars):
+        service = EventKitService.__new__(EventKitService)
+        service.get_all_lists = lambda: calendars
+        return service
+
+    def test_an_id_resolves_to_its_list(self):
+        a, b = MockCalendar("Projects", "cal-a"), MockCalendar("Projects", "cal-b")
+        service = self._service([a, b])
+        assert service.get_list_by_id("cal-b") is b
+
+    def test_a_duplicate_title_is_exactly_why_the_id_matters(self):
+        """Both lists answer to the same name; only the id distinguishes them."""
+        a, b = MockCalendar("Projects", "cal-a"), MockCalendar("Projects", "cal-b")
+        service = self._service([a, b])
+        assert service.get_list_by_name("Projects") is a
+        assert service.get_list_by_id("cal-b") is b
+
+    def test_an_id_wins_when_both_are_given(self):
+        a, b = MockCalendar("Work", "cal-a"), MockCalendar("Personal", "cal-b")
+        service = self._service([a, b])
+        assert service.resolve_list("Work", "cal-b") is b
+
+    def test_a_name_still_resolves_on_its_own(self):
+        a = MockCalendar("Work", "cal-a")
+        assert self._service([a]).resolve_list("Work") is a
+
+    def test_an_unknown_id_names_the_id(self):
+        service = self._service([MockCalendar("Work", "cal-a")])
+        with pytest.raises(ValueError, match="cal-zz"):
+            service.resolve_list(None, "cal-zz")
+
+    def test_an_unknown_name_names_the_name(self):
+        service = self._service([MockCalendar("Work", "cal-a")])
+        with pytest.raises(ValueError, match="Nope"):
+            service.resolve_list("Nope")
+
+    def test_neither_is_refused(self):
+        service = self._service([MockCalendar("Work", "cal-a")])
+        with pytest.raises(ValueError, match="list_name or list_id"):
+            service.resolve_list()
