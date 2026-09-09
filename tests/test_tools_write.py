@@ -70,6 +70,13 @@ class MockReminder:
         priority: int = 0,
         notes: str | None = None,
         due_components=None,
+        start_components=None,
+        url=None,
+        location=None,
+        creation_date=None,
+        last_modified_date=None,
+        external_id=None,
+        time_zone=None,
     ):
         self._title = title
         self._identifier = identifier
@@ -77,6 +84,13 @@ class MockReminder:
         self._priority = priority
         self._notes = notes
         self._due = due_components
+        self._start = start_components
+        self._url = url
+        self._location = location
+        self._creation_date = creation_date
+        self._last_modified_date = last_modified_date
+        self._external_id = external_id
+        self._time_zone = time_zone
 
     def title(self):
         return self._title
@@ -95,6 +109,30 @@ class MockReminder:
 
     def dueDateComponents(self):
         return self._due
+
+    def isCompleted(self):
+        return False
+
+    def startDateComponents(self):
+        return self._start
+
+    def URL(self):
+        return self._url
+
+    def location(self):
+        return self._location
+
+    def creationDate(self):
+        return self._creation_date
+
+    def lastModifiedDate(self):
+        return self._last_modified_date
+
+    def calendarItemExternalIdentifier(self):
+        return self._external_id
+
+    def timeZone(self):
+        return self._time_zone
 
 
 @pytest.fixture()

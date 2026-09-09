@@ -47,6 +47,26 @@ def _format_due_date(components) -> str | None:
     return date_str
 
 
+def _format_url(ns_url) -> str | None:
+    if ns_url is None:
+        return None
+    return ns_url.absoluteString()
+
+
+def _format_time_zone(ns_tz) -> str | None:
+    if ns_tz is None:
+        return None
+    return ns_tz.name()
+
+
+def _format_ns_date(ns_date) -> str | None:
+    if ns_date is None:
+        return None
+    return datetime.fromtimestamp(
+        ns_date.timeIntervalSince1970()
+    ).isoformat()
+
+
 def _format_reminder(reminder) -> dict:
     return {
         "id": reminder.calendarItemIdentifier(),
@@ -58,20 +78,20 @@ def _format_reminder(reminder) -> dict:
         "list_id": (
             reminder.calendar().calendarIdentifier() if reminder.calendar() else None
         ),
+        "is_completed": bool(reminder.isCompleted()),
+        "start_date": _format_due_date(reminder.startDateComponents()),
+        "url": _format_url(reminder.URL()),
+        "location": reminder.location(),
+        "created_at": _format_ns_date(reminder.creationDate()),
+        "last_modified_at": _format_ns_date(reminder.lastModifiedDate()),
+        "external_id": reminder.calendarItemExternalIdentifier(),
+        "time_zone": _format_time_zone(reminder.timeZone()),
     }
-
-
-def _format_completion_date(ns_date) -> str | None:
-    if ns_date is None:
-        return None
-    return datetime.fromtimestamp(
-        ns_date.timeIntervalSince1970()
-    ).isoformat()
 
 
 def _format_completed_reminder(reminder) -> dict:
     data = _format_reminder(reminder)
-    data["completion_date"] = _format_completion_date(
+    data["completion_date"] = _format_ns_date(
         reminder.completionDate()
     )
     return data

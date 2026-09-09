@@ -7,8 +7,8 @@ import pytest
 
 from apple_reminders_mcp.server import (
     _format_completed_reminder,
-    _format_completion_date,
     _format_due_date,
+    _format_ns_date,
     _format_priority,
     _format_reminder,
     create_list,
@@ -52,6 +52,13 @@ class MockReminder:
         notes: str | None = None,
         due_components=None,
         completion_date=None,
+        start_components=None,
+        url=None,
+        location=None,
+        creation_date=None,
+        last_modified_date=None,
+        external_id=None,
+        time_zone=None,
     ):
         self._title = title
         self._identifier = identifier
@@ -60,6 +67,13 @@ class MockReminder:
         self._notes = notes
         self._due = due_components
         self._completion_date = completion_date
+        self._start = start_components
+        self._url = url
+        self._location = location
+        self._creation_date = creation_date
+        self._last_modified_date = last_modified_date
+        self._external_id = external_id
+        self._time_zone = time_zone
 
     def title(self):
         return self._title
@@ -82,6 +96,30 @@ class MockReminder:
     def completionDate(self):
         return self._completion_date
 
+    def isCompleted(self):
+        return self._completion_date is not None
+
+    def startDateComponents(self):
+        return self._start
+
+    def URL(self):
+        return self._url
+
+    def location(self):
+        return self._location
+
+    def creationDate(self):
+        return self._creation_date
+
+    def lastModifiedDate(self):
+        return self._last_modified_date
+
+    def calendarItemExternalIdentifier(self):
+        return self._external_id
+
+    def timeZone(self):
+        return self._time_zone
+
 
 class MockNSDate:
     def __init__(self, timestamp: float):
@@ -89,6 +127,22 @@ class MockNSDate:
 
     def timeIntervalSince1970(self):
         return self._timestamp
+
+
+class MockNSURL:
+    def __init__(self, url: str):
+        self._url = url
+
+    def absoluteString(self):
+        return self._url
+
+
+class MockNSTimeZone:
+    def __init__(self, name: str):
+        self._name = name
+
+    def name(self):
+        return self._name
 
 
 class MockDateComponents:
@@ -198,6 +252,14 @@ class TestFormatReminder:
             "notes": "Whole milk",
             "list": "Work",
             "list_id": "cal-work",
+            "is_completed": False,
+            "start_date": None,
+            "url": None,
+            "location": None,
+            "created_at": None,
+            "last_modified_at": None,
+            "external_id": None,
+            "time_zone": None,
         }
 
     def test_minimal_reminder(self):
@@ -214,6 +276,14 @@ class TestFormatReminder:
             "notes": None,
             "list": "Default",
             "list_id": "cal-default",
+            "is_completed": False,
+            "start_date": None,
+            "url": None,
+            "location": None,
+            "created_at": None,
+            "last_modified_at": None,
+            "external_id": None,
+            "time_zone": None,
         }
 
     def test_reminder_without_calendar(self):
@@ -222,6 +292,63 @@ class TestFormatReminder:
         result = _format_reminder(rem)
 
         assert result["list"] is None
+
+    def test_all_scalar_fields_populated(self):
+        cal = MockCalendar("Work", identifier="cal-work")
+        created = datetime(2026, 1, 2, 8, 15).timestamp()
+        modified = datetime(2026, 1, 3, 9, 45, 30).timestamp()
+        rem = MockReminder(
+            title="Ship it",
+            identifier="rem-7",
+            calendar=cal,
+            completion_date=MockNSDate(modified),
+            start_components=MockDateComponents(2026, 3, 1, 9, 0),
+            url=MockNSURL("https://example.com/task"),
+            location="Office",
+            creation_date=MockNSDate(created),
+            last_modified_date=MockNSDate(modified),
+            external_id="ext-7",
+            time_zone=MockNSTimeZone("Europe/Berlin"),
+        )
+
+        result = _format_reminder(rem)
+
+        assert result["is_completed"] is True
+        assert result["start_date"] == "2026-03-01T09:00"
+        assert result["url"] == "https://example.com/task"
+        assert result["location"] == "Office"
+        assert result["created_at"] == "2026-01-02T08:15:00"
+        assert result["last_modified_at"] == "2026-01-03T09:45:30"
+        assert result["external_id"] == "ext-7"
+        assert result["time_zone"] == "Europe/Berlin"
+
+    def test_bare_reminder_emits_scalars_rather_than_omitting_them(self):
+        rem = MockReminder(title="Bare", identifier="rem-8")
+
+        result = _format_reminder(rem)
+
+        assert len(result) == 15
+        assert result["is_completed"] is False
+        for key in (
+            "start_date",
+            "url",
+            "location",
+            "created_at",
+            "last_modified_at",
+            "external_id",
+            "time_zone",
+        ):
+            assert key in result
+            assert result[key] is None
+
+    def test_start_date_unset_sentinel_returns_none(self):
+        rem = MockReminder(
+            title="Floating",
+            identifier="rem-10",
+            start_components=MockDateComponents(2**63 - 1, 3, 15),
+        )
+
+        assert _format_reminder(rem)["start_date"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -315,6 +442,14 @@ class TestShowIncompleteReminders:
                 "notes": "Whole milk",
                 "list": "Work",
                 "list_id": "cal-work",
+                "is_completed": False,
+                "start_date": None,
+                "url": None,
+                "location": None,
+                "created_at": None,
+                "last_modified_at": None,
+                "external_id": None,
+                "time_zone": None,
             }
         ]
         mock_service.get_incomplete_reminders.assert_called_once_with("Work", None)
@@ -342,6 +477,14 @@ class TestShowIncompleteReminders:
                 "notes": None,
                 "list": "Work",
                 "list_id": "cal-work",
+                "is_completed": False,
+                "start_date": None,
+                "url": None,
+                "location": None,
+                "created_at": None,
+                "last_modified_at": None,
+                "external_id": None,
+                "time_zone": None,
             }
         ]
 
@@ -402,12 +545,12 @@ class TestShowAllIncompleteReminders:
 
 class TestFormatCompletionDate:
     def test_none(self):
-        assert _format_completion_date(None) is None
+        assert _format_ns_date(None) is None
 
     def test_formats_iso(self):
         ts = datetime(2026, 4, 20, 14, 30, 5).timestamp()
         assert (
-            _format_completion_date(MockNSDate(ts))
+            _format_ns_date(MockNSDate(ts))
             == "2026-04-20T14:30:05"
         )
 
@@ -467,6 +610,14 @@ class TestShowCompletedRemindersToday:
                 "notes": None,
                 "list": "Work",
                 "list_id": "cal-work",
+                "is_completed": True,
+                "start_date": None,
+                "url": None,
+                "location": None,
+                "created_at": None,
+                "last_modified_at": None,
+                "external_id": None,
+                "time_zone": None,
                 "completion_date": "2026-04-20T09:00:00",
             }
         ]
