@@ -7,6 +7,7 @@ import pytest
 
 from apple_reminders_mcp.server import (
     _format_alarm,
+    _format_attendee,
     _format_completed_reminder,
     _format_due_date,
     _format_ns_date,
@@ -19,6 +20,7 @@ from apple_reminders_mcp.server import (
     show_completed_reminders_today,
     show_incomplete_reminders,
 )
+from tests.conftest import MockReminder as _MockReminderBase
 
 
 # ---------------------------------------------------------------------------
@@ -44,93 +46,16 @@ class MockCalendar:
         return self._identifier
 
 
-class MockReminder:
-    def __init__(
-        self,
-        title: str = "",
-        identifier: str = "rem-1",
-        calendar: MockCalendar | None = None,
-        priority: int = 0,
-        notes: str | None = None,
-        due_components=None,
-        completion_date=None,
-        start_components=None,
-        url=None,
-        location=None,
-        creation_date=None,
-        last_modified_date=None,
-        external_id=None,
-        time_zone=None,
-        alarms=None,
-        recurrence_rules=None,
-    ):
-        self._title = title
-        self._identifier = identifier
-        self._calendar = calendar
-        self._priority = priority
-        self._notes = notes
-        self._due = due_components
+class MockReminder(_MockReminderBase):
+    def __init__(self, *args, completion_date=None, **kwargs):
+        super().__init__(*args, **kwargs)
         self._completion_date = completion_date
-        self._start = start_components
-        self._url = url
-        self._location = location
-        self._creation_date = creation_date
-        self._last_modified_date = last_modified_date
-        self._external_id = external_id
-        self._time_zone = time_zone
-        self._alarms = alarms or []
-        self._recurrence_rules = recurrence_rules or []
-
-    def title(self):
-        return self._title
-
-    def calendarItemIdentifier(self):
-        return self._identifier
-
-    def calendar(self):
-        return self._calendar
-
-    def priority(self):
-        return self._priority
-
-    def notes(self):
-        return self._notes
-
-    def dueDateComponents(self):
-        return self._due
 
     def completionDate(self):
         return self._completion_date
 
     def isCompleted(self):
         return self._completion_date is not None
-
-    def startDateComponents(self):
-        return self._start
-
-    def URL(self):
-        return self._url
-
-    def location(self):
-        return self._location
-
-    def creationDate(self):
-        return self._creation_date
-
-    def lastModifiedDate(self):
-        return self._last_modified_date
-
-    def calendarItemExternalIdentifier(self):
-        return self._external_id
-
-    def timeZone(self):
-        return self._time_zone
-
-    def alarms(self):
-        return self._alarms
-
-    def recurrenceRules(self):
-        return self._recurrence_rules
 
 
 class MockNSDate:
@@ -193,6 +118,22 @@ class MockAlarm:
 
     def structuredLocation(self):
         return self._structured_location
+
+
+class MockParticipant:
+    def __init__(self, name: str, url=None, status: int = 0):
+        self._name = name
+        self._url = url
+        self._status = status
+
+    def name(self):
+        return self._name
+
+    def URL(self):
+        return self._url
+
+    def participantStatus(self):
+        return self._status
 
 
 class MockDayOfWeek:
@@ -674,6 +615,75 @@ class TestReminderRecurrence:
         rem = MockReminder(title="Bare", identifier="rem-14")
 
         assert "recurrence" not in _format_reminder(rem)
+
+
+# ---------------------------------------------------------------------------
+# Tests: _format_attendee
+# ---------------------------------------------------------------------------
+
+
+class TestFormatAttendee:
+    def test_attendee_with_url_and_status(self):
+        participant = MockParticipant(
+            "Alice", url=MockNSURL("mailto:alice@example.com"), status=2
+        )
+
+        assert _format_attendee(participant) == {
+            "name": "Alice",
+            "url": "mailto:alice@example.com",
+            "status": "accepted",
+        }
+
+    def test_attendee_without_url(self):
+        participant = MockParticipant("Bob", status=1)
+
+        assert _format_attendee(participant) == {
+            "name": "Bob",
+            "url": None,
+            "status": "pending",
+        }
+
+
+class TestReminderAttendees:
+    def test_attendees_included_when_present(self):
+        rem = MockReminder(
+            title="Shared task",
+            identifier="rem-15",
+            attendees=[
+                MockParticipant(
+                    "Alice", url=MockNSURL("mailto:alice@example.com"), status=2
+                ),
+                MockParticipant(
+                    "Bob", url=MockNSURL("mailto:bob@example.com"), status=3
+                ),
+            ],
+        )
+
+        result = _format_reminder(rem)
+
+        assert result["attendees"] == [
+            {
+                "name": "Alice",
+                "url": "mailto:alice@example.com",
+                "status": "accepted",
+            },
+            {
+                "name": "Bob",
+                "url": "mailto:bob@example.com",
+                "status": "declined",
+            },
+        ]
+
+    def test_none_attendees_key_absent(self):
+        rem = MockReminder(title="Bare", identifier="rem-16")
+
+        assert rem.attendees() is None
+        assert "attendees" not in _format_reminder(rem)
+
+    def test_empty_attendees_key_absent(self):
+        rem = MockReminder(title="Bare", identifier="rem-17", attendees=[])
+
+        assert "attendees" not in _format_reminder(rem)
 
 
 # ---------------------------------------------------------------------------

@@ -89,6 +89,10 @@ named "Reminders" living in different accounts.
   decision at the end of Task 4 rather than now: if the two classes are by then identical apart
   from `completionDate`, a shared base in `conftest.py` with a read-side subclass is the cheaper
   option and is in scope. If they have diverged further, leave them duplicated.
+  ➕ Re-taken at the end of Task 4: the two classes were identical apart from `completionDate` (and
+  the `isCompleted()` implementation derived from it), so the base moved to `tests/conftest.py` and
+  `test_tools_read.py` now subclasses it to add `completion_date`. `MockCalendar` stays duplicated,
+  as Task 6 still requires.
 
 ## Progress Tracking
 
@@ -298,22 +302,22 @@ tags, the flagged bit, smart lists, sections, rich-text notes.
 - Modify: `tests/test_tools_read.py`
 - Modify: `tests/test_tools_write.py`
 
-- [ ] add `_PARTICIPANT_STATUS_LABELS` for values 0–7 per the table in Technical Details
-- [ ] add `_format_attendee(participant)` returning `name`, `url` (via `_format_url`) and `status`
+- [x] add `_PARTICIPANT_STATUS_LABELS` for values 0–7 per the table in Technical Details
+- [x] add `_format_attendee(participant)` returning `name`, `url` (via `_format_url`) and `status`
       — the selector is `participantStatus()`, not `status()`; `status` is the output key only
-- [ ] wire `attendees` into `_format_reminder`, present only when `attendees()` is non-empty
-- [ ] ⚠️ `attendees()` returns `None`, not `[]`, on a reminder that has never been shared — guard on
+- [x] wire `attendees` into `_format_reminder`, present only when `attendees()` is non-empty
+- [x] ⚠️ `attendees()` returns `None`, not `[]`, on a reminder that has never been shared — guard on
       falsiness, not on `len()`
-- [ ] ⚠️ Why this survives the exclusion rule applied to `weeksOfTheYear()`: that rule turns on
+- [x] ⚠️ Why this survives the exclusion rule applied to `weeksOfTheYear()`: that rule turns on
       whether the Reminders UI can author the value, and Reminders *does* author per-item
       assignment — "Assign Reminder" on a shared list, distinct from sharing the list itself. What
       is unverified is whether EventKit surfaces an assignee as an `EKParticipant`; Apple documents
       `attendees` primarily for events. Implement it, and if the manual check in Post-Completion
       finds a real assigned reminder reporting no attendees, delete this task's code rather than
       leaving a formatter that can never fire
-- [ ] add `attendees()` returning `None` to `MockReminder` in both test files
-- [ ] write tests: two attendees with differing statuses; `None` attendees → key absent
-- [ ] verify: `uv run pytest -q` passes and `"attendees" not in _format_reminder(bare_reminder)`
+- [x] add `attendees()` returning `None` to `MockReminder` in both test files
+- [x] write tests: two attendees with differing statuses; `None` attendees → key absent
+- [x] verify: `uv run pytest -q` passes and `"attendees" not in _format_reminder(bare_reminder)`
 
 ### Task 5: Add list colour to the service layer
 

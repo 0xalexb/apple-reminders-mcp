@@ -26,6 +26,16 @@ _PRIORITY_LABELS = {0: "none", 1: "high", 5: "medium", 9: "low"}
 _PRIORITY_VALUES = {"none": 0, "low": 9, "medium": 5, "high": 1}
 _ALARM_PROXIMITY_LABELS = {0: "none", 1: "enter", 2: "leave"}
 _RECURRENCE_FREQUENCY_LABELS = {0: "daily", 1: "weekly", 2: "monthly", 3: "yearly"}
+_PARTICIPANT_STATUS_LABELS = {
+    0: "unknown",
+    1: "pending",
+    2: "accepted",
+    3: "declined",
+    4: "tentative",
+    5: "delegated",
+    6: "completed",
+    7: "in_process",
+}
 
 
 def _format_priority(priority: int) -> str:
@@ -110,6 +120,14 @@ def _format_recurrence_rule(rule) -> dict:
     return data
 
 
+def _format_attendee(participant) -> dict:
+    return {
+        "name": participant.name(),
+        "url": _format_url(participant.URL()),
+        "status": _PARTICIPANT_STATUS_LABELS.get(participant.participantStatus()),
+    }
+
+
 def _format_reminder(reminder) -> dict:
     data = {
         "id": reminder.calendarItemIdentifier(),
@@ -136,6 +154,9 @@ def _format_reminder(reminder) -> dict:
     rules = reminder.recurrenceRules()
     if rules:
         data["recurrence"] = [_format_recurrence_rule(rule) for rule in rules]
+    attendees = reminder.attendees()
+    if attendees:
+        data["attendees"] = [_format_attendee(a) for a in attendees]
     return data
 
 
