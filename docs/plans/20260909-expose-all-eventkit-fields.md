@@ -345,25 +345,25 @@ tags, the flagged bit, smart lists, sections, rich-text notes.
 - Modify: `src/apple_reminders_mcp/server.py`
 - Modify: `tests/test_tools_read.py`
 
-- [ ] add `_SOURCE_TYPE_LABELS = {0: "local", 1: "exchange", 2: "caldav", 3: "mobileme",
+- [x] add `_SOURCE_TYPE_LABELS = {0: "local", 1: "exchange", 2: "caldav", 3: "mobileme",
       4: "subscribed", 5: "birthdays"}`
-- [ ] extend the `list_reminder_lists` rows with `color` (via `service.calendar_color_hex(cal)`),
+- [x] extend the `list_reminder_lists` rows with `color` (via `service.calendar_color_hex(cal)`),
       `source_name`, `source_type`, `writable` (`allowsContentModifications()`) and
       `is_subscribed` (`isSubscribed()`)
-- [ ] ⚠️ `source()` can be `None` — emit `None` for both source keys rather than raising
-- [ ] add `source()`, `allowsContentModifications()`, `isSubscribed()` to `MockCalendar` in
+- [x] ⚠️ `source()` can be `None` — emit `None` for both source keys rather than raising
+- [x] add `source()`, `allowsContentModifications()`, `isSubscribed()` to `MockCalendar` in
       `tests/test_tools_read.py`; leave the `MockCalendar` copies in the other two test files alone,
       since neither exercises `list_reminder_lists`
-- [ ] ⚠️ stub `mock_service.calendar_color_hex.return_value` in every affected test. The
+- [x] ⚠️ stub `mock_service.calendar_color_hex.return_value` in every affected test. The
       `mock_service` fixture (`tests/test_tools_read.py:118`) is a bare `MagicMock`, so an unstubbed
       call puts a non-serialisable `MagicMock` in the `color` field while a key-count assertion
       still passes
-- [ ] ⚠️ extend the two existing exact-equality list-row literals to the new 8-key shape — by test
+- [x] ⚠️ extend the two existing exact-equality list-row literals to the new 8-key shape — by test
       name, not line: `test_returns_lists_with_counts` and `test_list_with_zero_reminders`, both in
       `TestListReminderLists`. `TestListIdentifiers` asserts key-by-key and needs no change
-- [ ] write tests: a writable iCloud list, a read-only subscribed list, and a list whose `source()`
+- [x] write tests: a writable iCloud list, a read-only subscribed list, and a list whose `source()`
       is `None`
-- [ ] verify: `uv run pytest tests/test_tools_read.py -k ListReminderLists -q` passes, each row has
+- [x] verify: `uv run pytest tests/test_tools_read.py -k ListReminderLists -q` passes, each row has
       exactly 8 keys, and a stubbed colour arrives as `row["color"] == "#ff0080"` rather than a
       `MagicMock`
 

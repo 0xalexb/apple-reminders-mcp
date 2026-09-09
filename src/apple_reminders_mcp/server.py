@@ -36,6 +36,14 @@ _PARTICIPANT_STATUS_LABELS = {
     6: "completed",
     7: "in_process",
 }
+_SOURCE_TYPE_LABELS = {
+    0: "local",
+    1: "exchange",
+    2: "caldav",
+    3: "mobileme",
+    4: "subscribed",
+    5: "birthdays",
+}
 
 
 def _format_priority(priority: int) -> str:
@@ -186,14 +194,24 @@ def list_reminder_lists() -> list[dict]:
         if cal:
             cal_id = cal.calendarIdentifier()
             counts[cal_id] = counts.get(cal_id, 0) + 1
-    return [
-        {
-            "id": cal.calendarIdentifier(),
-            "name": cal.title(),
-            "incomplete_count": counts.get(cal.calendarIdentifier(), 0),
-        }
-        for cal in lists
-    ]
+    rows = []
+    for cal in lists:
+        source = cal.source()
+        rows.append(
+            {
+                "id": cal.calendarIdentifier(),
+                "name": cal.title(),
+                "incomplete_count": counts.get(cal.calendarIdentifier(), 0),
+                "color": service.calendar_color_hex(cal),
+                "source_name": source.title() if source else None,
+                "source_type": (
+                    _SOURCE_TYPE_LABELS.get(source.sourceType()) if source else None
+                ),
+                "writable": cal.allowsContentModifications(),
+                "is_subscribed": cal.isSubscribed(),
+            }
+        )
+    return rows
 
 
 @mcp.tool()

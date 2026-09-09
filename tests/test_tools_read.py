@@ -28,22 +28,53 @@ from tests.conftest import MockReminder as _MockReminderBase
 # ---------------------------------------------------------------------------
 
 
+class MockSource:
+    def __init__(self, title: str, source_type: int):
+        self._title = title
+        self._source_type = source_type
+
+    def title(self):
+        return self._title
+
+    def sourceType(self):
+        return self._source_type
+
+
 class MockCalendar:
     _counter = 0
 
-    def __init__(self, name: str, identifier: str | None = None):
+    def __init__(
+        self,
+        name: str,
+        identifier: str | None = None,
+        source=None,
+        allows_modifications: bool = True,
+        subscribed: bool = False,
+    ):
         self._title = name
         if identifier is not None:
             self._identifier = identifier
         else:
             MockCalendar._counter += 1
             self._identifier = f"cal-{MockCalendar._counter}"
+        self._source = source
+        self._allows_modifications = allows_modifications
+        self._subscribed = subscribed
 
     def title(self):
         return self._title
 
     def calendarIdentifier(self):
         return self._identifier
+
+    def source(self):
+        return self._source
+
+    def allowsContentModifications(self):
+        return self._allows_modifications
+
+    def isSubscribed(self):
+        return self._subscribed
 
 
 class MockReminder(_MockReminderBase):
@@ -696,6 +727,7 @@ class TestListReminderLists:
         cal_work = MockCalendar("Work", identifier="cal-work")
         cal_personal = MockCalendar("Personal", identifier="cal-personal")
         mock_service.get_all_lists.return_value = [cal_work, cal_personal]
+        mock_service.calendar_color_hex.return_value = "#ff0080"
 
         rem1 = MockReminder("Task 1", calendar=cal_work)
         rem2 = MockReminder("Task 2", calendar=cal_work)
@@ -709,8 +741,26 @@ class TestListReminderLists:
         result = list_reminder_lists()
 
         assert result == [
-            {"id": "cal-work", "name": "Work", "incomplete_count": 2},
-            {"id": "cal-personal", "name": "Personal", "incomplete_count": 1},
+            {
+                "id": "cal-work",
+                "name": "Work",
+                "incomplete_count": 2,
+                "color": "#ff0080",
+                "source_name": None,
+                "source_type": None,
+                "writable": True,
+                "is_subscribed": False,
+            },
+            {
+                "id": "cal-personal",
+                "name": "Personal",
+                "incomplete_count": 1,
+                "color": "#ff0080",
+                "source_name": None,
+                "source_type": None,
+                "writable": True,
+                "is_subscribed": False,
+            },
         ]
 
     def test_empty_lists(self, mock_service):
@@ -723,12 +773,70 @@ class TestListReminderLists:
         cal = MockCalendar("Empty", identifier="cal-empty")
         mock_service.get_all_lists.return_value = [cal]
         mock_service.get_all_incomplete_reminders.return_value = []
+        mock_service.calendar_color_hex.return_value = None
 
         result = list_reminder_lists()
 
         assert result == [
-            {"id": "cal-empty", "name": "Empty", "incomplete_count": 0}
+            {
+                "id": "cal-empty",
+                "name": "Empty",
+                "incomplete_count": 0,
+                "color": None,
+                "source_name": None,
+                "source_type": None,
+                "writable": True,
+                "is_subscribed": False,
+            }
         ]
+
+    def test_writable_icloud_list(self, mock_service):
+        cal = MockCalendar(
+            "Groceries",
+            identifier="cal-icloud",
+            source=MockSource("iCloud", 2),
+        )
+        mock_service.get_all_lists.return_value = [cal]
+        mock_service.get_all_incomplete_reminders.return_value = []
+        mock_service.calendar_color_hex.return_value = "#ff0080"
+
+        row = list_reminder_lists()[0]
+
+        assert len(row) == 8
+        assert row["color"] == "#ff0080"
+        assert row["source_name"] == "iCloud"
+        assert row["source_type"] == "caldav"
+        assert row["writable"] is True
+        assert row["is_subscribed"] is False
+
+    def test_read_only_subscribed_list(self, mock_service):
+        cal = MockCalendar(
+            "Holidays",
+            identifier="cal-sub",
+            source=MockSource("Subscribed Calendars", 4),
+            allows_modifications=False,
+            subscribed=True,
+        )
+        mock_service.get_all_lists.return_value = [cal]
+        mock_service.get_all_incomplete_reminders.return_value = []
+        mock_service.calendar_color_hex.return_value = "#00ff00"
+
+        row = list_reminder_lists()[0]
+
+        assert row["source_type"] == "subscribed"
+        assert row["writable"] is False
+        assert row["is_subscribed"] is True
+
+    def test_list_without_a_source(self, mock_service):
+        cal = MockCalendar("Orphan", identifier="cal-orphan", source=None)
+        mock_service.get_all_lists.return_value = [cal]
+        mock_service.get_all_incomplete_reminders.return_value = []
+        mock_service.calendar_color_hex.return_value = None
+
+        row = list_reminder_lists()[0]
+
+        assert row["source_name"] is None
+        assert row["source_type"] is None
 
 
 # ---------------------------------------------------------------------------
