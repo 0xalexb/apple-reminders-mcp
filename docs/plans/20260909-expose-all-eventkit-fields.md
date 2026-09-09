@@ -325,18 +325,18 @@ tags, the flagged bit, smart lists, sections, rich-text notes.
 - Modify: `src/apple_reminders_mcp/eventkit_service.py`
 - Modify: `tests/test_eventkit_service.py`
 
-- [ ] add `EventKitService.calendar_color_hex(calendar)` returning `"#rrggbb"` or `None`
-- [ ] implement with a **function-local** `import AppKit` (matching `_datetime_to_nsdate`'s local
+- [x] add `EventKitService.calendar_color_hex(calendar)` returning `"#rrggbb"` or `None`
+- [x] implement with a **function-local** `import AppKit` (matching `_datetime_to_nsdate`'s local
       `import Foundation`): `calendar.color()`, then
       `colorUsingColorSpace_(AppKit.NSColorSpace.sRGBColorSpace())`, then `redComponent()`,
       `greenComponent()` and `blueComponent()` scaled to 0–255
-- [ ] ⚠️ this method must live in the service, not `server.py`: it is the one new field needing a
+- [x] ⚠️ this method must live in the service, not `server.py`: it is the one new field needing a
       macOS-only framework import, and `server.py` must stay importable on any OS
-- [ ] ⚠️ `colorUsingColorSpace_` returns `None` for a colour that cannot be converted — return
+- [x] ⚠️ `colorUsingColorSpace_` returns `None` for a colour that cannot be converted — return
       `None` rather than raising
-- [ ] write tests with a fake AppKit module injected, covering a normal colour, a `color()` of
+- [x] write tests with a fake AppKit module injected, covering a normal colour, a `color()` of
       `None`, and a failed colourspace conversion
-- [ ] verify: `uv run pytest tests/test_eventkit_service.py -q` passes and a mocked (1.0, 0.0, 0.5)
+- [x] verify: `uv run pytest tests/test_eventkit_service.py -q` passes and a mocked (1.0, 0.0, 0.5)
       colour yields exactly `"#ff0080"`
 
 ### Task 6: Add list metadata to `list_reminder_lists`

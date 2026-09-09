@@ -15,10 +15,11 @@ from apple_reminders_mcp.eventkit_service import EventKitService
 class MockCalendar:
     """Simulates an EKCalendar object."""
 
-    def __init__(self, name: str, identifier: str = "cal-1"):
+    def __init__(self, name: str, identifier: str = "cal-1", color=None):
         self._title = name
         self._identifier = identifier
         self._source = MagicMock()
+        self._color = color
 
     def title(self):
         return self._title
@@ -34,6 +35,9 @@ class MockCalendar:
 
     def setSource_(self, source):
         self._source = source
+
+    def color(self):
+        return self._color
 
 
 class MockReminder:
@@ -736,3 +740,56 @@ class TestResolveList:
         service = self._service([MockCalendar("Work", "cal-a")])
         with pytest.raises(ValueError, match="list_name or list_id"):
             service.resolve_list()
+
+
+# ---------------------------------------------------------------------------
+# Tests: calendar_color_hex
+# ---------------------------------------------------------------------------
+
+
+def _make_ns_color(components=(1.0, 0.0, 0.5), converts=True):
+    """Create a mock NSColor whose sRGB conversion yields the given components."""
+    color = MagicMock()
+    if not converts:
+        color.colorUsingColorSpace_.return_value = None
+        return color
+    srgb = MagicMock()
+    srgb.redComponent.return_value = components[0]
+    srgb.greenComponent.return_value = components[1]
+    srgb.blueComponent.return_value = components[2]
+    color.colorUsingColorSpace_.return_value = srgb
+    return color
+
+
+class TestCalendarColorHex:
+    def _service(self):
+        return EventKitService.__new__(EventKitService)
+
+    def _hex(self, calendar):
+        with patch.dict("sys.modules", {"AppKit": MagicMock()}):
+            return self._service().calendar_color_hex(calendar)
+
+    def test_components_become_a_hex_string(self):
+        calendar = MockCalendar("Work", color=_make_ns_color((1.0, 0.0, 0.5)))
+        assert self._hex(calendar) == "#ff0080"
+
+    def test_black_keeps_both_digits(self):
+        calendar = MockCalendar("Work", color=_make_ns_color((0.0, 0.0, 0.0)))
+        assert self._hex(calendar) == "#000000"
+
+    def test_conversion_uses_the_srgb_color_space(self):
+        color = _make_ns_color()
+        appkit = MagicMock()
+        with patch.dict("sys.modules", {"AppKit": appkit}):
+            self._service().calendar_color_hex(MockCalendar("Work", color=color))
+
+        color.colorUsingColorSpace_.assert_called_once_with(
+            appkit.NSColorSpace.sRGBColorSpace()
+        )
+
+    def test_a_list_without_a_color(self):
+        assert self._hex(MockCalendar("Work")) is None
+
+    def test_a_color_that_cannot_be_converted(self):
+        calendar = MockCalendar("Work", color=_make_ns_color(converts=False))
+        assert self._hex(calendar) is None
