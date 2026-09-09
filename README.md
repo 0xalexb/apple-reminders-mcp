@@ -71,22 +71,23 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
 |------|-------------|
 | `ping` | Health check - returns "pong" |
 | `list_reminder_lists` | Returns every list's `id`, `name`, `incomplete_count`, `color`, `source_name`, `source_type`, `writable` and `is_subscribed` |
-| `create_list` | Creates a new reminder list |
+| `create_list` | Creates a new reminder list; returns `{name, created}` |
 | `show_incomplete_reminders` | Returns incomplete reminders for a list, by `list_id` (preferred) or `list_name`, with the full reminder field set below |
-| `show_all_incomplete_reminders` | Returns all incomplete reminders grouped by list, with the full reminder field set below |
+| `show_all_incomplete_reminders` | Returns all incomplete reminders as an object keyed by list name, with the full reminder field set below |
 | `show_completed_reminders_today` | Returns reminders completed on a given day (ISO `YYYY-MM-DD`, defaults to today), each carrying `completion_date` alongside the full reminder field set |
-| `create_reminder` | Creates a reminder with optional list (`list_id` or `list_name`), due date (ISO 8601), priority (none/low/medium/high), recurrence (daily/weekly/monthly/yearly), and notes |
-| `complete_reminder` | Marks a reminder as completed by its ID |
-| `delete_reminder` | Deletes a reminder by its ID |
-| `move_reminder` | Moves a reminder to a different list, by `target_list_id` (preferred) or `target_list_name` |
-| `quick_capture` | Quickly captures a reminder in the default list with just a title and optional notes |
+| `create_reminder` | Creates a reminder with optional list (`list_id` or `list_name`), due date (ISO 8601), priority (none/low/medium/high), recurrence (daily/weekly/monthly/yearly), and notes; returns the created reminder with the full field set below |
+| `complete_reminder` | Marks a reminder as completed by its ID; returns `{id, completed}` |
+| `delete_reminder` | Deletes a reminder by its ID; returns `{id, deleted}` |
+| `move_reminder` | Moves a reminder to a different list, by `target_list_id` (preferred) or `target_list_name`; returns the moved reminder with the full field set below |
+| `quick_capture` | Quickly captures a reminder in the default list with just a title and optional notes; returns the captured reminder with the full field set below |
 
 ## Returned fields
 
 ### Reminder
 
-Every reminder returned by `show_incomplete_reminders`, `show_all_incomplete_reminders` and
-`show_completed_reminders_today` carries these keys, always present and `null` when unset:
+Every reminder returned by `show_incomplete_reminders`, `show_all_incomplete_reminders`,
+`show_completed_reminders_today`, `create_reminder`, `move_reminder` and `quick_capture` carries
+these keys, always present and `null` when unset:
 
 | Key | Meaning |
 |------|-------------|
@@ -101,23 +102,33 @@ Every reminder returned by `show_incomplete_reminders`, `show_all_incomplete_rem
 | `start_date` | ISO 8601, same shape as `due_date` |
 | `url` | Attached URL |
 | `location` | Free-text location string |
-| `created_at` | ISO 8601 timestamp |
-| `last_modified_at` | ISO 8601 timestamp |
+| `created_at` | ISO 8601 timestamp carrying the server's UTC offset |
+| `last_modified_at` | ISO 8601 timestamp carrying the server's UTC offset |
 | `external_id` | `calendarItemExternalIdentifier` - stable across devices, shared by occurrences of a recurring item |
 | `time_zone` | Time zone name; `null` means a floating date |
 
-`show_completed_reminders_today` adds `completion_date` (ISO 8601 timestamp).
+`show_completed_reminders_today` adds `completion_date` (ISO 8601 timestamp). A timestamp outside the range Python
+dates cover - `distantPast` is the unbounded sentinel a synced peer writes - comes back as `null`
+rather than failing the call.
+
+`show_all_incomplete_reminders` returns an object keyed by list **name**, with an `Unknown` bucket
+for reminders whose list is missing. Two lists sharing a name share one bucket; the rows inside stay
+separable by `list_id`.
 
 Three collections are included **only when non-empty**, so bulk listings do not carry empty arrays:
 
-- `alarms[]` - `absolute_date`, `relative_offset` (seconds, negative means before the due date),
-  `proximity` (`none`/`enter`/`leave`) and, for a geofence, a nested `location` with `title` and
-  `radius`.
+- `alarms[]` - `absolute_date`, `relative_offset` (seconds, negative means before the due date;
+  `null` for an absolute or geofenced alarm, where EventKit's `0.0` would be indistinguishable from
+  a real zero offset), `proximity` (`none`/`enter`/`leave`) and, for a geofence, a nested `location`
+  with `title` and `radius`.
 - `recurrence[]` - `frequency` (`daily`/`weekly`/`monthly`/`yearly`), `interval`, `end_date` and
   `occurrence_count` always; plus `days_of_week` (each `{day, week_number}`, day 1 = Sunday),
   `days_of_month`, `months_of_year` and `set_positions` when the rule sets them.
 - `attendees[]` - `name`, `url` and `status` (`unknown`, `pending`, `accepted`, `declined`,
   `tentative`, `delegated`, `completed`, `in_process`).
+
+An EventKit enum value this server does not know reads back as `custom(N)` rather than `null`, so an
+unrecognised value stays distinguishable from an unset one.
 
 ### List
 
@@ -132,9 +143,25 @@ Subtasks and parent links, tags, the flagged bit, smart lists, sections and rich
 absent from the payloads above because EventKit does not surface them at all. They are a platform
 limitation, not a gap in this server, and no amount of work here can reach them.
 
+## List identifiers
+
+Reminders permits two lists with the same name. A title is therefore not a key: a name-keyed lookup
+picks whichever list it reaches first, with no signal that it had to choose, and reminders from both
+lists look identical once returned.
+
+Every list carries a `calendarIdentifier` that is unique and stable across renames. It is exposed as
+`id` on `list_reminder_lists` and as `list_id` on every reminder, and the tools that take a list
+accept `list_id` / `target_list_id` alongside the name. Where both are given, the id wins.
+
+Prefer the id wherever one is available. `apple-calendar-mcp` has always worked this way; this brings
+the two servers into line.
+
 ## Development
 
 ```bash
+# Print the installed version
+apple-reminders-mcp --version
+
 # Run tests
 uv run pytest
 
@@ -148,7 +175,8 @@ uv run ruff check src/ tests/
 ## Architecture
 
 - `src/apple_reminders_mcp/server.py` - MCPServer with tool definitions
-- `src/apple_reminders_mcp/eventkit_service.py` - EventKit service layer wrapping pyobjc calls
+- `src/apple_reminders_mcp/eventkit_service.py` - EventKit service layer; macOS-only framework
+  imports (`EventKit`, `AppKit`, `Foundation`) are function-local and confined to this file
 - `tests/` - Test suite with mocked EventKit objects (runs on any platform)
 
 ## Uninstall
@@ -170,16 +198,3 @@ uv cache prune
 ## License
 
 MIT
-
-## List identifiers
-
-Reminders permits two lists with the same name. A title is therefore not a key: a name-keyed lookup
-picks whichever list it reaches first, with no signal that it had to choose, and reminders from both
-lists look identical once returned.
-
-Every list carries a `calendarIdentifier` that is unique and stable across renames. It is exposed as
-`id` on `list_reminder_lists` and as `list_id` on every reminder, and the tools that take a list
-accept `list_id` / `target_list_id` alongside the name. Where both are given, the id wins.
-
-Prefer the id wherever one is available. `apple-calendar-mcp` has always worked this way; this brings
-the two servers into line.

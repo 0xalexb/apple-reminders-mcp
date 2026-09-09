@@ -8,6 +8,7 @@ requires-python = ">=3.11"
 dependencies = [
     "mcp[cli]>=2.0,<3",
     "pyobjc-framework-EventKit>=11.0; sys_platform == 'darwin'",
+    "pyobjc-framework-Cocoa>=11.0; sys_platform == 'darwin'",
 ]
 
 [project.scripts]

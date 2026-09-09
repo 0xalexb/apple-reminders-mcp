@@ -762,12 +762,9 @@ def _make_ns_color(components=(1.0, 0.0, 0.5), converts=True):
 
 
 class TestCalendarColorHex:
-    def _service(self):
-        return EventKitService.__new__(EventKitService)
-
     def _hex(self, calendar):
         with patch.dict("sys.modules", {"AppKit": MagicMock()}):
-            return self._service().calendar_color_hex(calendar)
+            return EventKitService.calendar_color_hex(calendar)
 
     def test_components_become_a_hex_string(self):
         calendar = MockCalendar("Work", color=_make_ns_color((1.0, 0.0, 0.5)))
@@ -781,7 +778,7 @@ class TestCalendarColorHex:
         color = _make_ns_color()
         appkit = MagicMock()
         with patch.dict("sys.modules", {"AppKit": appkit}):
-            self._service().calendar_color_hex(MockCalendar("Work", color=color))
+            EventKitService.calendar_color_hex(MockCalendar("Work", color=color))
 
         color.colorUsingColorSpace_.assert_called_once_with(
             appkit.NSColorSpace.sRGBColorSpace()
@@ -793,3 +790,55 @@ class TestCalendarColorHex:
     def test_a_color_that_cannot_be_converted(self):
         calendar = MockCalendar("Work", color=_make_ns_color(converts=False))
         assert self._hex(calendar) is None
+
+    @pytest.mark.parametrize(
+        "components,expected",
+        [
+            ((-0.05, 1.02, 0.5), "#00ff80"),
+            ((2.0, -1.0, 0.0), "#ff0000"),
+        ],
+    )
+    def test_wide_gamut_components_are_clamped(self, components, expected):
+        """colorUsingColorSpace_ can hand back components outside 0..1; unclamped they format as '#-d10480'."""
+        calendar = MockCalendar("Work", color=_make_ns_color(components))
+        assert self._hex(calendar) == expected
+
+    def test_a_missing_appkit_does_not_take_down_the_caller(self):
+        calendar = MockCalendar("Work", color=_make_ns_color())
+        with patch.dict("sys.modules", {"AppKit": None}):
+            assert EventKitService.calendar_color_hex(calendar) is None
+
+
+# ---------------------------------------------------------------------------
+# Tests: fetch timeout
+# ---------------------------------------------------------------------------
+
+
+class TestFetchTimeout:
+    def _service_whose_fetch_never_calls_back(self):
+        store = _make_store()
+        store.fetchRemindersMatchingPredicate_completion_.side_effect = (
+            lambda predicate, callback: None
+        )
+        service, _, _ = _make_service(store=store)
+        return service
+
+    def _never_signalled(self):
+        event = MagicMock()
+        event.wait.return_value = False
+        return patch(
+            "apple_reminders_mcp.eventkit_service.threading.Event",
+            return_value=event,
+        )
+
+    def test_incomplete_reminders_time_out(self):
+        service = self._service_whose_fetch_never_calls_back()
+        with self._never_signalled():
+            with pytest.raises(TimeoutError, match="Timed out fetching reminders"):
+                service.get_all_incomplete_reminders()
+
+    def test_completed_reminders_time_out(self):
+        service = self._service_whose_fetch_never_calls_back()
+        with self._never_signalled():
+            with pytest.raises(TimeoutError, match="Timed out fetching reminders"):
+                service.get_completed_reminders_for_day(date(2026, 4, 20))
