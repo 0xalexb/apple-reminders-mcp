@@ -23,6 +23,8 @@
 - Python 3.11+, type hints via `from __future__ import annotations`
 - Priority mapping: 0=none, 1=high, 5=medium, 9=low (Apple's EventKit values)
 - Due dates use ISO 8601 format at the tool API level
+- Two kinds of date, never unified: `_format_due_date` renders EventKit date components as a floating wall-clock string (no offset, date-only when no time is set) for `due_date` and `start_date`; `_format_ns_date` renders an `NSDate` as an absolute instant carrying the local UTC offset for `created_at`, `last_modified_at`, `completion_date`, `alarms[].absolute_date` and `recurrence[].end_date`
+- A consumer comparing the two directly gets `TypeError` from `datetime.fromisoformat` values; the README's "Date and time values" section is where that is documented
 - Recurrence mapping: "daily"=0, "weekly"=1, "monthly"=2, "yearly"=3 (EventKit EKRecurrenceFrequency values)
 - Alarm proximity mapping: 0=none, 1=enter, 2=leave (EKAlarmProximity)
 - Participant status mapping: 0=unknown, 1=pending, 2=accepted, 3=declined, 4=tentative, 5=delegated, 6=completed, 7=in_process (EKParticipantStatus)

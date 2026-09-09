@@ -1114,6 +1114,49 @@ class TestReminderWithEveryCollection:
 
 
 # ---------------------------------------------------------------------------
+# Tests: wall-clock dates and absolute instants stay two distinct kinds
+# ---------------------------------------------------------------------------
+
+
+class TestTheTwoDateKinds:
+    def test_wall_clock_dates_stay_naive_while_instants_carry_an_offset(self):
+        result = _format_reminder(_kitchen_sink_reminder())
+
+        assert result["due_date"] == "2026-03-15T10:30"
+        assert result["start_date"] == "2026-03-01T09:00"
+        assert datetime.fromisoformat(result["due_date"]).utcoffset() is None
+        assert datetime.fromisoformat(result["start_date"]).utcoffset() is None
+
+        assert result["created_at"] == _iso(2026, 1, 2, 8, 15)
+        assert result["last_modified_at"] == _iso(2026, 1, 3, 9, 45)
+        assert datetime.fromisoformat(result["created_at"]).utcoffset() is not None
+        assert (
+            datetime.fromisoformat(result["last_modified_at"]).utcoffset() is not None
+        )
+
+    def test_a_date_only_due_date_has_nowhere_to_carry_an_offset(self):
+        rem = MockReminder(
+            title="Someday",
+            identifier="rem-22",
+            due_components=MockDateComponents(2026, 3, 15),
+            creation_date=MockNSDate(datetime(2026, 1, 2, 8, 15).timestamp()),
+        )
+
+        result = _format_reminder(rem)
+
+        assert result["due_date"] == "2026-03-15"
+        assert datetime.fromisoformat(result["created_at"]).utcoffset() is not None
+
+    def test_comparing_the_two_kinds_directly_is_a_typeerror(self):
+        result = _format_reminder(_kitchen_sink_reminder())
+
+        with pytest.raises(TypeError):
+            datetime.fromisoformat(result["created_at"]) < datetime.fromisoformat(
+                result["due_date"]
+            )
+
+
+# ---------------------------------------------------------------------------
 # Tests: every tool payload survives a JSON round-trip
 # ---------------------------------------------------------------------------
 

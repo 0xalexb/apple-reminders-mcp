@@ -93,23 +93,23 @@ these keys, always present and `null` when unset:
 |------|-------------|
 | `id` | `calendarItemIdentifier` - local to this device, can change on sync |
 | `title` | Reminder title |
-| `due_date` | ISO 8601, date-only when no time is set |
+| `due_date` | Floating wall-clock date (no UTC offset), date-only when no time is set - see [Date and time values](#date-and-time-values) |
 | `priority` | `none`, `low`, `medium`, `high`, or `custom(N)` |
 | `notes` | Plain-text notes |
 | `list` | Name of the containing list |
 | `list_id` | `calendarIdentifier` of the containing list |
 | `is_completed` | Whether the reminder is done |
-| `start_date` | ISO 8601, same shape as `due_date` |
+| `start_date` | Floating wall-clock date, same shape as `due_date` |
 | `url` | Attached URL |
 | `location` | Free-text location string |
-| `created_at` | ISO 8601 timestamp carrying the server's UTC offset |
-| `last_modified_at` | ISO 8601 timestamp carrying the server's UTC offset |
+| `created_at` | Absolute instant, ISO 8601 carrying the server's UTC offset |
+| `last_modified_at` | Absolute instant, ISO 8601 carrying the server's UTC offset |
 | `external_id` | `calendarItemExternalIdentifier` - stable across devices, shared by occurrences of a recurring item |
 | `time_zone` | Time zone name; `null` means a floating date |
 
-`show_completed_reminders_today` adds `completion_date` (ISO 8601 timestamp). A timestamp outside the range Python
-dates cover - `distantPast` is the unbounded sentinel a synced peer writes - comes back as `null`
-rather than failing the call.
+`show_completed_reminders_today` adds `completion_date`, an absolute instant. A timestamp outside
+the range Python dates cover - `distantPast` is the unbounded sentinel a synced peer writes - comes
+back as `null` rather than failing the call.
 
 `show_all_incomplete_reminders` returns an object keyed by list **name**, with an `Unknown` bucket
 for reminders whose list is missing. Two lists sharing a name share one bucket; the rows inside stay
@@ -129,6 +129,36 @@ Three collections are included **only when non-empty**, so bulk listings do not 
 
 An EventKit enum value this server does not know reads back as `custom(N)` rather than `null`, so an
 unrecognised value stays distinguishable from an unset one.
+
+### Date and time values
+
+Two different kinds of value share the ISO 8601 spelling, and they are not interchangeable.
+
+**Absolute instants** - a fixed point on the timeline, emitted with the server's UTC offset
+(`"2026-01-02T08:15:00+01:00"`):
+
+- `created_at`, `last_modified_at`, `completion_date`
+- `alarms[].absolute_date`
+- `recurrence[].end_date`
+
+**Floating wall-clock dates** - the values the Reminders UI shows, with no offset and often no time
+at all (`"2026-03-15T10:30"`, `"2026-03-15"`):
+
+- `due_date`, `start_date`
+
+EventKit stores those two as date components rather than as an instant, deliberately: a reminder due
+at 10:30 is still due at 10:30 after you fly somewhere else. Interpret them in the reminder's own
+`time_zone` where it has one; `time_zone: null` means the value really is floating.
+
+> **Warning:** the two kinds must not be compared directly. `datetime.fromisoformat` returns an
+> offset-aware value for an instant and a naive one for a wall-clock date, and Python raises
+> `TypeError: can't compare offset-naive and offset-aware datetimes` for any comparison between the
+> two. Make the naive one aware first - `.replace(tzinfo=ZoneInfo(reminder["time_zone"]))`, or
+> `.astimezone()` to read it as local time.
+
+`completion_date` changed shape in this release: it previously came back with no UTC offset and now
+carries one, in line with the other absolute instants. It is still ISO 8601 and still parses with
+`datetime.fromisoformat`.
 
 ### List
 
