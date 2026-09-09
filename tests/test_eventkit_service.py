@@ -830,6 +830,7 @@ class TestFetchTimeout:
 
     def test_completed_reminders_time_out(self):
         service = self._service_whose_fetch_never_calls_back()
-        with self._never_signalled():
-            with pytest.raises(TimeoutError, match="Timed out fetching reminders"):
-                service.get_completed_reminders_for_day(date(2026, 4, 20))
+        with patch.dict("sys.modules", {"Foundation": MagicMock()}):
+            with self._never_signalled():
+                with pytest.raises(TimeoutError, match="Timed out fetching reminders"):
+                    service.get_completed_reminders_for_day(date(2026, 4, 20))

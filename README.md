@@ -151,10 +151,43 @@ at 10:30 is still due at 10:30 after you fly somewhere else. Interpret them in t
 `time_zone` where it has one; `time_zone: null` means the value really is floating.
 
 > **Warning:** the two kinds must not be compared directly. `datetime.fromisoformat` returns an
-> offset-aware value for an instant and a naive one for a wall-clock date, and Python raises
-> `TypeError: can't compare offset-naive and offset-aware datetimes` for any comparison between the
-> two. Make the naive one aware first - `.replace(tzinfo=ZoneInfo(reminder["time_zone"]))`, or
-> `.astimezone()` to read it as local time.
+> offset-aware value for an instant and a naive one for a wall-clock date. Ordering and subtraction
+> raise (`TypeError: can't compare offset-naive and offset-aware datetimes`, and
+> `can't subtract ...` respectively), but **`==` does not raise** - it returns `False` for every
+> instant/wall-clock pair, however close in time, and `!=` returns `True`. That silent case is the
+> dangerous one: equality never signals, it just never matches.
+
+Make the naive value aware before comparing. `time_zone` is `NSTimeZone.name()`, which is usually an
+IANA key but is a bare offset (`GMT`, `GMT+0200`, `GMT-0500`) whenever the zone was built from an
+offset rather than a region - including for reminders this server itself creates from a due date
+carrying an offset, such as `"2026-03-15T10:30:00+02:00"`. `ZoneInfo` raises
+`ZoneInfoNotFoundError` on those, so handle both forms:
+
+```python
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+def tzinfo_for(name: str | None):
+    """Resolve a reminder's `time_zone` to a tzinfo, or None when it is floating."""
+    if not name:
+        return None
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError):
+        if name == "GMT":
+            return timezone.utc
+        if len(name) == 8 and name.startswith("GMT") and name[3] in "+-":
+            sign = -1 if name[3] == "-" else 1
+            delta = timedelta(hours=int(name[4:6]), minutes=int(name[6:8]))
+            return timezone(sign * delta)
+        raise
+
+due = datetime.fromisoformat(reminder["due_date"])
+tz = tzinfo_for(reminder["time_zone"])
+due = due.replace(tzinfo=tz) if tz else due.astimezone()
+```
+
+Use `.astimezone()` alone if reading a floating value as server-local time is good enough.
 
 `completion_date` changed shape in this release: it previously came back with no UTC offset and now
 carries one, in line with the other absolute instants. It is still ISO 8601 and still parses with

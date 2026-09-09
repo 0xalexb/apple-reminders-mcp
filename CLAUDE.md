@@ -24,7 +24,8 @@
 - Priority mapping: 0=none, 1=high, 5=medium, 9=low (Apple's EventKit values)
 - Due dates use ISO 8601 format at the tool API level
 - Two kinds of date, never unified: `_format_due_date` renders EventKit date components as a floating wall-clock string (no offset, date-only when no time is set) for `due_date` and `start_date`; `_format_ns_date` renders an `NSDate` as an absolute instant carrying the local UTC offset for `created_at`, `last_modified_at`, `completion_date`, `alarms[].absolute_date` and `recurrence[].end_date`
-- A consumer comparing the two directly gets `TypeError` from `datetime.fromisoformat` values; the README's "Date and time values" section is where that is documented
+- Ordering or subtracting the two kinds raises `TypeError`, but `==` does not - it silently returns `False` for every instant/wall-clock pair. Never document the comparison hazard as "any comparison raises"; the silent equality case is the one consumers get wrong
+- `time_zone` is `NSTimeZone.name()`, which is an IANA key only when the zone came from a region; a zone built from an offset (as `_make_date_components` does for a due date carrying one) names itself `GMT`, `GMT+0200`, `GMT-0500`, and `ZoneInfo` rejects those. The README's "Date and time values" section carries the recipe that handles both
 - Recurrence mapping: "daily"=0, "weekly"=1, "monthly"=2, "yearly"=3 (EventKit EKRecurrenceFrequency values)
 - Alarm proximity mapping: 0=none, 1=enter, 2=leave (EKAlarmProximity)
 - Participant status mapping: 0=unknown, 1=pending, 2=accepted, 3=declined, 4=tentative, 5=delegated, 6=completed, 7=in_process (EKParticipantStatus)

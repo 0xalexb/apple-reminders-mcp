@@ -1119,13 +1119,30 @@ class TestTheTwoDateKinds:
         assert result["due_date"] == "2026-03-15"
         assert datetime.fromisoformat(result["created_at"]).utcoffset() is not None
 
-    def test_comparing_the_two_kinds_directly_is_a_typeerror(self):
+    def test_ordering_the_two_kinds_directly_is_a_typeerror(self):
         result = _format_reminder(_kitchen_sink_reminder())
 
         with pytest.raises(TypeError):
             datetime.fromisoformat(result["created_at"]) < datetime.fromisoformat(
                 result["due_date"]
             )
+
+    def test_subtracting_the_two_kinds_directly_is_a_typeerror(self):
+        result = _format_reminder(_kitchen_sink_reminder())
+
+        with pytest.raises(TypeError):
+            datetime.fromisoformat(result["created_at"]) - datetime.fromisoformat(
+                result["due_date"]
+            )
+
+    def test_equality_across_the_two_kinds_is_false_rather_than_raising(self):
+        """The silent case the README warns about: == never matches and never signals."""
+        result = _format_reminder(_kitchen_sink_reminder())
+        instant = datetime.fromisoformat(result["created_at"])
+        wall_clock = datetime.fromisoformat(result["due_date"])
+
+        assert (instant == wall_clock) is False
+        assert (instant != wall_clock) is True
 
 
 class TestPayloadsAreJsonSerialisable:
