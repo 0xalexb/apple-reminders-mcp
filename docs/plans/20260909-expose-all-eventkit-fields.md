@@ -369,17 +369,30 @@ tags, the flagged bit, smart lists, sections, rich-text notes.
 
 ### Task 7: Verify acceptance criteria
 
-- [ ] verify every field in the Technical Details inventory appears in the output of the read tools
-- [ ] verify no pre-existing key was renamed or dropped: `id`, `title`, `due_date`, `priority`,
+- [x] verify every field in the Technical Details inventory appears in the output of the read tools
+      — driven end-to-end through `show_incomplete_reminders`, `show_all_incomplete_reminders`,
+      `show_completed_reminders_today` and `list_reminder_lists` with the existing test mocks: all
+      8 new scalars, the 4 alarm keys (incl. `location.title`/`radius`), the 8 recurrence keys
+      (incl. `days_of_week[].day`/`week_number`) and the 3 attendee keys are present, and the enum
+      labels resolve (`enter`, `weekly`, `accepted`, `caldav`)
+- [x] verify no pre-existing key was renamed or dropped: `id`, `title`, `due_date`, `priority`,
       `notes`, `list`, `list_id`, `completion_date` all still present with unchanged semantics
-- [ ] verify `server.py` still has no EventKit import: `grep -n "import EventKit" src/apple_reminders_mcp/server.py`
-      must produce no output
-- [ ] verify the empty-collection rule holds: a bare reminder's dict contains none of `alarms`,
-      `recurrence`, `attendees`
-- [ ] run the full suite: `uv run pytest`
-- [ ] verify coverage did not regress against the pre-change baseline measured with
+      — each asserted by value, and `_format_due_date` diffed byte-identical against `2d2cba5`
+- [x] ⚠️ verify `server.py` still has no EventKit import: `grep -n "import EventKit" src/apple_reminders_mcp/server.py`
+      must produce no output — as written the grep *does* match, on the substring inside the
+      pre-existing local-module line `from apple_reminders_mcp.eventkit_service import
+      EventKitService` (present unchanged at `2d2cba5`, so not introduced here). The check's intent
+      — no macOS *framework* import — was re-run precisely and produces no output:
+      `grep -nE "^[[:space:]]*(import[[:space:]]+EventKit|from[[:space:]]+EventKit)\b" src/apple_reminders_mcp/server.py`.
+      The framework imports remain confined to `eventkit_service.py` (`EventKit`, `AppKit`,
+      `Foundation`, all function-local)
+- [x] verify the empty-collection rule holds: a bare reminder's dict contains none of `alarms`,
+      `recurrence`, `attendees` — bare reminder returns exactly 15 keys, 16 when completed
+- [x] run the full suite: `uv run pytest` — **140 passed**
+- [x] verify coverage did not regress against the pre-change baseline measured with
       `uv run pytest --cov=apple_reminders_mcp -q` on 2026-09-09: **109 passed, TOTAL 91%**
       (`server.py` 92%, `eventkit_service.py` 90%). Re-run the same command and compare
+      — now **140 passed, TOTAL 92%** (`server.py` 94%, `eventkit_service.py` 90%): no regression
 
 ### Task 8: Update documentation
 
