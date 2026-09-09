@@ -78,6 +78,7 @@ class MockReminder:
         external_id=None,
         time_zone=None,
         alarms=None,
+        recurrence_rules=None,
     ):
         self._title = title
         self._identifier = identifier
@@ -93,6 +94,7 @@ class MockReminder:
         self._external_id = external_id
         self._time_zone = time_zone
         self._alarms = alarms or []
+        self._recurrence_rules = recurrence_rules or []
 
     def title(self):
         return self._title
@@ -138,6 +140,9 @@ class MockReminder:
 
     def alarms(self):
         return self._alarms
+
+    def recurrenceRules(self):
+        return self._recurrence_rules
 
 
 @pytest.fixture()

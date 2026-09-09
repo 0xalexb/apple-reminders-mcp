@@ -11,6 +11,7 @@ from apple_reminders_mcp.server import (
     _format_due_date,
     _format_ns_date,
     _format_priority,
+    _format_recurrence_rule,
     _format_reminder,
     create_list,
     list_reminder_lists,
@@ -61,6 +62,7 @@ class MockReminder:
         external_id=None,
         time_zone=None,
         alarms=None,
+        recurrence_rules=None,
     ):
         self._title = title
         self._identifier = identifier
@@ -77,6 +79,7 @@ class MockReminder:
         self._external_id = external_id
         self._time_zone = time_zone
         self._alarms = alarms or []
+        self._recurrence_rules = recurrence_rules or []
 
     def title(self):
         return self._title
@@ -125,6 +128,9 @@ class MockReminder:
 
     def alarms(self):
         return self._alarms
+
+    def recurrenceRules(self):
+        return self._recurrence_rules
 
 
 class MockNSDate:
@@ -187,6 +193,79 @@ class MockAlarm:
 
     def structuredLocation(self):
         return self._structured_location
+
+
+class MockDayOfWeek:
+    def __init__(self, day: int, week_number: int = 0):
+        self._day = day
+        self._week_number = week_number
+
+    def dayOfTheWeek(self):
+        return self._day
+
+    def weekNumber(self):
+        return self._week_number
+
+
+class MockRecurrenceEnd:
+    def __init__(self, end_date=None, occurrence_count: int = 0):
+        self._end_date = end_date
+        self._occurrence_count = occurrence_count
+
+    def endDate(self):
+        return self._end_date
+
+    def occurrenceCount(self):
+        return self._occurrence_count
+
+
+class MockNSNumber:
+    def __init__(self, value: int):
+        self._value = value
+
+    def __int__(self):
+        return self._value
+
+
+class MockRecurrenceRule:
+    def __init__(
+        self,
+        frequency: int = 0,
+        interval: int = 1,
+        days_of_week=None,
+        days_of_month=None,
+        months_of_year=None,
+        set_positions=None,
+        recurrence_end=None,
+    ):
+        self._frequency = frequency
+        self._interval = interval
+        self._days_of_week = days_of_week
+        self._days_of_month = days_of_month
+        self._months_of_year = months_of_year
+        self._set_positions = set_positions
+        self._recurrence_end = recurrence_end
+
+    def frequency(self):
+        return self._frequency
+
+    def interval(self):
+        return self._interval
+
+    def daysOfTheWeek(self):
+        return self._days_of_week
+
+    def daysOfTheMonth(self):
+        return self._days_of_month
+
+    def monthsOfTheYear(self):
+        return self._months_of_year
+
+    def setPositions(self):
+        return self._set_positions
+
+    def recurrenceEnd(self):
+        return self._recurrence_end
 
 
 class MockDateComponents:
@@ -476,6 +555,125 @@ class TestReminderAlarms:
         rem = MockReminder(title="Bare", identifier="rem-12")
 
         assert "alarms" not in _format_reminder(rem)
+
+
+# ---------------------------------------------------------------------------
+# Tests: _format_recurrence_rule
+# ---------------------------------------------------------------------------
+
+
+class TestFormatRecurrenceRule:
+    def test_simple_daily_rule(self):
+        rule = MockRecurrenceRule(frequency=0, interval=1)
+
+        assert _format_recurrence_rule(rule) == {
+            "frequency": "daily",
+            "interval": 1,
+            "end_date": None,
+            "occurrence_count": None,
+        }
+
+    def test_every_two_weeks_on_monday_and_wednesday(self):
+        rule = MockRecurrenceRule(
+            frequency=1,
+            interval=2,
+            days_of_week=[MockDayOfWeek(2), MockDayOfWeek(4)],
+        )
+
+        result = _format_recurrence_rule(rule)
+
+        assert result["frequency"] == "weekly"
+        assert result["interval"] == 2
+        assert result["days_of_week"] == [
+            {"day": 2, "week_number": None},
+            {"day": 4, "week_number": None},
+        ]
+
+    def test_first_monday_of_every_month(self):
+        rule = MockRecurrenceRule(
+            frequency=2,
+            days_of_week=[MockDayOfWeek(2, week_number=1)],
+        )
+
+        result = _format_recurrence_rule(rule)
+
+        assert result["frequency"] == "monthly"
+        assert result["days_of_week"] == [{"day": 2, "week_number": 1}]
+
+    def test_numeric_collections_are_coerced_to_int(self):
+        rule = MockRecurrenceRule(
+            frequency=3,
+            days_of_month=[MockNSNumber(1), MockNSNumber(15)],
+            months_of_year=[MockNSNumber(6)],
+            set_positions=[MockNSNumber(-1)],
+        )
+
+        result = _format_recurrence_rule(rule)
+
+        assert result["days_of_month"] == [1, 15]
+        assert result["months_of_year"] == [6]
+        assert result["set_positions"] == [-1]
+        for value in result["days_of_month"] + result["months_of_year"]:
+            assert type(value) is int
+
+    def test_rule_ending_on_a_date(self):
+        ts = datetime(2026, 6, 30, 12, 0).timestamp()
+        rule = MockRecurrenceRule(
+            frequency=1,
+            interval=2,
+            recurrence_end=MockRecurrenceEnd(end_date=MockNSDate(ts)),
+        )
+
+        result = _format_recurrence_rule(rule)
+
+        assert result["end_date"] == "2026-06-30T12:00:00"
+        assert result["occurrence_count"] is None
+
+    def test_rule_ending_after_occurrences(self):
+        rule = MockRecurrenceRule(
+            frequency=0,
+            recurrence_end=MockRecurrenceEnd(occurrence_count=10),
+        )
+
+        result = _format_recurrence_rule(rule)
+
+        assert result["end_date"] is None
+        assert result["occurrence_count"] == 10
+
+    def test_empty_collections_are_omitted(self):
+        rule = MockRecurrenceRule(
+            frequency=0, days_of_week=[], days_of_month=[], set_positions=[]
+        )
+
+        result = _format_recurrence_rule(rule)
+
+        for key in ("days_of_week", "days_of_month", "months_of_year", "set_positions"):
+            assert key not in result
+
+
+class TestReminderRecurrence:
+    def test_recurrence_included_when_present(self):
+        rem = MockReminder(
+            title="Standup",
+            identifier="rem-13",
+            recurrence_rules=[MockRecurrenceRule(frequency=1, interval=2)],
+        )
+
+        result = _format_reminder(rem)
+
+        assert result["recurrence"] == [
+            {
+                "frequency": "weekly",
+                "interval": 2,
+                "end_date": None,
+                "occurrence_count": None,
+            }
+        ]
+
+    def test_no_rules_key_absent(self):
+        rem = MockReminder(title="Bare", identifier="rem-14")
+
+        assert "recurrence" not in _format_reminder(rem)
 
 
 # ---------------------------------------------------------------------------

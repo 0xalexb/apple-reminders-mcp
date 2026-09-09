@@ -266,29 +266,29 @@ tags, the flagged bit, smart lists, sections, rich-text notes.
 - Modify: `tests/test_tools_read.py`
 - Modify: `tests/test_tools_write.py`
 
-- [ ] add `_RECURRENCE_FREQUENCY_LABELS = {0: "daily", 1: "weekly", 2: "monthly", 3: "yearly"}`
-- [ ] add `_format_recurrence_rule(rule)`. Selectors are non-obvious here, so they are named
+- [x] add `_RECURRENCE_FREQUENCY_LABELS = {0: "daily", 1: "weekly", 2: "monthly", 3: "yearly"}`
+- [x] add `_format_recurrence_rule(rule)`. Selectors are non-obvious here, so they are named
       explicitly — `frequency()`, `interval()`, `daysOfTheWeek()`, `daysOfTheMonth()`,
       `monthsOfTheYear()`, `setPositions()`, `recurrenceEnd()`. There is no `daysOfWeek()`;
       guessing the short forms yields `AttributeError`
-- [ ] map each `daysOfTheWeek()` entry (`EKRecurrenceDayOfWeek`) to
+- [x] map each `daysOfTheWeek()` entry (`EKRecurrenceDayOfWeek`) to
       `{"day": dayOfTheWeek(), "week_number": weekNumber() or None}` — dropping `weekNumber()`
       would read "first Monday of every month" back as plain "Monday", which is the same class of
       lossiness this task exists to fix. `weekNumber()` is `0` when unset; emit `None`
-- [ ] include `set_positions` from `setPositions()` for the same reason
-- [ ] ⚠️ `daysOfTheMonth()`, `monthsOfTheYear()` and `setPositions()` return `NSNumber` arrays —
+- [x] include `set_positions` from `setPositions()` for the same reason
+- [x] ⚠️ `daysOfTheMonth()`, `monthsOfTheYear()` and `setPositions()` return `NSNumber` arrays —
       coerce with `int()` so the JSON payload carries plain integers
-- [ ] emit `end_date` (via `_format_ns_date` — `EKRecurrenceEnd.endDate()` is an `NSDate`, not
+- [x] emit `end_date` (via `_format_ns_date` — `EKRecurrenceEnd.endDate()` is an `NSDate`, not
       `NSDateComponents`) and `occurrence_count` from `recurrenceEnd()`
-- [ ] ⚠️ `recurrenceEnd()` is `None` for an open-ended rule, and when present exactly one of
+- [x] ⚠️ `recurrenceEnd()` is `None` for an open-ended rule, and when present exactly one of
       `endDate()` / `occurrenceCount()` is meaningful — `occurrenceCount()` is `0` for a date-bounded
       rule. Emit `None` for the one that does not apply rather than `0`
-- [ ] wire `recurrence` into `_format_reminder`, present only when `recurrenceRules()` is non-empty
-- [ ] add `recurrenceRules()` returning `[]` to `MockReminder` in both test files
-- [ ] write tests: simple daily rule; "every 2 weeks on Mon/Wed"; "first Monday of every month"
+- [x] wire `recurrence` into `_format_reminder`, present only when `recurrenceRules()` is non-empty
+- [x] add `recurrenceRules()` returning `[]` to `MockReminder` in both test files
+- [x] write tests: simple daily rule; "every 2 weeks on Mon/Wed"; "first Monday of every month"
       (asserting `week_number == 1`); rule ending on a date; rule ending after N occurrences
-- [ ] write tests: no rules → the `recurrence` key is absent
-- [ ] verify: `uv run pytest -q` passes and a mocked `interval=2` rule round-trips as `2`, proving
+- [x] write tests: no rules → the `recurrence` key is absent
+- [x] verify: `uv run pytest -q` passes and a mocked `interval=2` rule round-trips as `2`, proving
       the old always-1 lossiness is gone on the read side
 
 ### Task 4: Add attendee formatting
