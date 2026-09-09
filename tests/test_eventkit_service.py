@@ -12,13 +12,14 @@ from apple_reminders_mcp.eventkit_service import EventKitService
 # Mock helpers
 # ---------------------------------------------------------------------------
 
-class MockCalendar:
+class MockWritableCalendar:
     """Simulates an EKCalendar object."""
 
-    def __init__(self, name: str, identifier: str = "cal-1"):
+    def __init__(self, name: str, identifier: str = "cal-1", color=None):
         self._title = name
         self._identifier = identifier
         self._source = MagicMock()
+        self._color = color
 
     def title(self):
         return self._title
@@ -35,8 +36,11 @@ class MockCalendar:
     def setSource_(self, source):
         self._source = source
 
+    def color(self):
+        return self._color
 
-class MockReminder:
+
+class MockWritableReminder:
     """Simulates an EKReminder object."""
 
     def __init__(self, title: str = "", identifier: str = "rem-1"):
@@ -108,7 +112,7 @@ def _make_store(calendars=None, reminders=None):
     store = MagicMock()
     store.calendarsForEntityType_.return_value = calendars or []
 
-    default_cal = MockCalendar("Default", "default-cal")
+    default_cal = MockWritableCalendar("Default", "default-cal")
     store.defaultCalendarForNewReminders.return_value = default_cal
 
     def fetch_reminders(predicate, callback):
@@ -138,7 +142,7 @@ def _make_service(calendars=None, reminders=None, store=None, ek=None):
 
 class TestGetAllLists:
     def test_returns_calendars(self):
-        cals = [MockCalendar("Work"), MockCalendar("Personal")]
+        cals = [MockWritableCalendar("Work"), MockWritableCalendar("Personal")]
         svc, store, _ = _make_service(calendars=cals)
 
         result = svc.get_all_lists()
@@ -164,14 +168,14 @@ class TestGetAllLists:
 
 class TestGetListByName:
     def test_found(self):
-        work = MockCalendar("Work")
-        personal = MockCalendar("Personal")
+        work = MockWritableCalendar("Work")
+        personal = MockWritableCalendar("Personal")
         svc, _, _ = _make_service(calendars=[work, personal])
 
         assert svc.get_list_by_name("Personal") is personal
 
     def test_not_found(self):
-        svc, _, _ = _make_service(calendars=[MockCalendar("Work")])
+        svc, _, _ = _make_service(calendars=[MockWritableCalendar("Work")])
 
         assert svc.get_list_by_name("Missing") is None
 
@@ -183,7 +187,7 @@ class TestGetListByName:
 class TestCreateList:
     def test_success(self):
         ek = _make_ek_module()
-        mock_cal = MockCalendar("", "new-cal")
+        mock_cal = MockWritableCalendar("", "new-cal")
         ek.EKCalendar.calendarForEntityType_eventStore_.return_value = mock_cal
         store = _make_store()
         svc = EventKitService(event_store=store, ek_module=ek)
@@ -198,7 +202,7 @@ class TestCreateList:
 
     def test_failure_raises(self):
         ek = _make_ek_module()
-        mock_cal = MockCalendar("", "new-cal")
+        mock_cal = MockWritableCalendar("", "new-cal")
         ek.EKCalendar.calendarForEntityType_eventStore_.return_value = mock_cal
         store = _make_store()
         store.saveCalendar_commit_error_.return_value = (False, "save error")
@@ -214,8 +218,8 @@ class TestCreateList:
 
 class TestGetIncompleteReminders:
     def test_returns_reminders_for_list(self):
-        cal = MockCalendar("Work")
-        rem = MockReminder("Buy milk")
+        cal = MockWritableCalendar("Work")
+        rem = MockWritableReminder("Buy milk")
         svc, store, _ = _make_service(calendars=[cal], reminders=[rem])
 
         result = svc.get_incomplete_reminders("Work")
@@ -232,7 +236,7 @@ class TestGetIncompleteReminders:
             svc.get_incomplete_reminders("Missing")
 
     def test_returns_empty_when_no_reminders(self):
-        cal = MockCalendar("Work")
+        cal = MockWritableCalendar("Work")
         svc, _, _ = _make_service(calendars=[cal], reminders=None)
 
         result = svc.get_incomplete_reminders("Work")
@@ -246,8 +250,8 @@ class TestGetIncompleteReminders:
 
 class TestGetAllIncompleteReminders:
     def test_returns_all(self):
-        cals = [MockCalendar("Work"), MockCalendar("Home")]
-        rems = [MockReminder("Task A"), MockReminder("Task B")]
+        cals = [MockWritableCalendar("Work"), MockWritableCalendar("Home")]
+        rems = [MockWritableReminder("Task A"), MockWritableReminder("Task B")]
         svc, store, _ = _make_service(calendars=cals, reminders=rems)
 
         result = svc.get_all_incomplete_reminders()
@@ -269,8 +273,8 @@ class TestGetAllIncompleteReminders:
 
 class TestGetCompletedRemindersForDay:
     def test_returns_reminders_for_specified_day(self):
-        cal = MockCalendar("Work")
-        rem = MockReminder("Finished task")
+        cal = MockWritableCalendar("Work")
+        rem = MockWritableReminder("Finished task")
         svc, store, _ = _make_service(calendars=[cal], reminders=[rem])
 
         mock_foundation = MagicMock()
@@ -283,7 +287,7 @@ class TestGetCompletedRemindersForDay:
         assert args[2] == [cal]
 
     def test_defaults_to_today(self):
-        cal = MockCalendar("Work")
+        cal = MockWritableCalendar("Work")
         svc, store, _ = _make_service(calendars=[cal], reminders=None)
 
         mock_foundation = MagicMock()
@@ -298,7 +302,7 @@ class TestGetCompletedRemindersForDay:
         assert end_ts - start_ts == 24 * 60 * 60
 
     def test_returns_empty_when_no_reminders(self):
-        cal = MockCalendar("Work")
+        cal = MockWritableCalendar("Work")
         svc, _, _ = _make_service(calendars=[cal], reminders=None)
 
         mock_foundation = MagicMock()
@@ -315,7 +319,7 @@ class TestGetCompletedRemindersForDay:
 class TestCreateReminder:
     def test_basic_with_default_list(self):
         ek = _make_ek_module()
-        mock_rem = MockReminder()
+        mock_rem = MockWritableReminder()
         ek.EKReminder.reminderWithEventStore_.return_value = mock_rem
         store = _make_store()
         svc = EventKitService(event_store=store, ek_module=ek)
@@ -332,9 +336,9 @@ class TestCreateReminder:
 
     def test_with_specific_list(self):
         ek = _make_ek_module()
-        mock_rem = MockReminder()
+        mock_rem = MockWritableReminder()
         ek.EKReminder.reminderWithEventStore_.return_value = mock_rem
-        target_cal = MockCalendar("Shopping")
+        target_cal = MockWritableCalendar("Shopping")
         store = _make_store(calendars=[target_cal])
         svc = EventKitService(event_store=store, ek_module=ek)
 
@@ -344,7 +348,7 @@ class TestCreateReminder:
 
     def test_with_priority_and_notes(self):
         ek = _make_ek_module()
-        mock_rem = MockReminder()
+        mock_rem = MockWritableReminder()
         ek.EKReminder.reminderWithEventStore_.return_value = mock_rem
         store = _make_store()
         svc = EventKitService(event_store=store, ek_module=ek)
@@ -356,7 +360,7 @@ class TestCreateReminder:
 
     def test_with_due_date(self):
         ek = _make_ek_module()
-        mock_rem = MockReminder()
+        mock_rem = MockWritableReminder()
         ek.EKReminder.reminderWithEventStore_.return_value = mock_rem
         store = _make_store()
         svc = EventKitService(event_store=store, ek_module=ek)
@@ -369,7 +373,7 @@ class TestCreateReminder:
 
     def test_with_recurrence(self):
         ek = _make_ek_module()
-        mock_rem = MockReminder()
+        mock_rem = MockWritableReminder()
         ek.EKReminder.reminderWithEventStore_.return_value = mock_rem
         mock_rule = MagicMock()
         ek.EKRecurrenceRule.alloc().initRecurrenceWithFrequency_interval_end_.return_value = mock_rule
@@ -382,7 +386,7 @@ class TestCreateReminder:
 
     def test_list_not_found_raises(self):
         ek = _make_ek_module()
-        mock_rem = MockReminder()
+        mock_rem = MockWritableReminder()
         ek.EKReminder.reminderWithEventStore_.return_value = mock_rem
         store = _make_store(calendars=[])
         svc = EventKitService(event_store=store, ek_module=ek)
@@ -392,7 +396,7 @@ class TestCreateReminder:
 
     def test_save_failure_raises(self):
         ek = _make_ek_module()
-        mock_rem = MockReminder()
+        mock_rem = MockWritableReminder()
         ek.EKReminder.reminderWithEventStore_.return_value = mock_rem
         store = _make_store()
         store.saveReminder_commit_error_.return_value = (False, "disk full")
@@ -403,7 +407,7 @@ class TestCreateReminder:
 
     def test_no_default_calendar_raises(self):
         ek = _make_ek_module()
-        mock_rem = MockReminder()
+        mock_rem = MockWritableReminder()
         ek.EKReminder.reminderWithEventStore_.return_value = mock_rem
         store = _make_store()
         store.defaultCalendarForNewReminders.return_value = None
@@ -419,7 +423,7 @@ class TestCreateReminder:
 
 class TestCompleteReminder:
     def test_success(self):
-        mock_rem = MockReminder("Task", "rem-42")
+        mock_rem = MockWritableReminder("Task", "rem-42")
         store = _make_store()
         store.calendarItemWithIdentifier_.return_value = mock_rem
         svc, _, _ = _make_service(store=store)
@@ -441,7 +445,7 @@ class TestCompleteReminder:
             svc.complete_reminder("rem-99")
 
     def test_save_failure_raises(self):
-        mock_rem = MockReminder("Task", "rem-42")
+        mock_rem = MockWritableReminder("Task", "rem-42")
         store = _make_store()
         store.calendarItemWithIdentifier_.return_value = mock_rem
         store.saveReminder_commit_error_.return_value = (False, "err")
@@ -457,7 +461,7 @@ class TestCompleteReminder:
 
 class TestDeleteReminder:
     def test_success(self):
-        mock_rem = MockReminder("Task", "rem-42")
+        mock_rem = MockWritableReminder("Task", "rem-42")
         store = _make_store()
         store.calendarItemWithIdentifier_.return_value = mock_rem
         svc, _, _ = _make_service(store=store)
@@ -477,7 +481,7 @@ class TestDeleteReminder:
             svc.delete_reminder("rem-99")
 
     def test_remove_failure_raises(self):
-        mock_rem = MockReminder("Task", "rem-42")
+        mock_rem = MockWritableReminder("Task", "rem-42")
         store = _make_store()
         store.calendarItemWithIdentifier_.return_value = mock_rem
         store.removeReminder_commit_error_.return_value = (False, "err")
@@ -493,8 +497,8 @@ class TestDeleteReminder:
 
 class TestMoveReminder:
     def test_success(self):
-        mock_rem = MockReminder("Task", "rem-42")
-        target_cal = MockCalendar("Personal", "cal-2")
+        mock_rem = MockWritableReminder("Task", "rem-42")
+        target_cal = MockWritableCalendar("Personal", "cal-2")
         store = _make_store(calendars=[target_cal])
         store.calendarItemWithIdentifier_.return_value = mock_rem
         svc, _, _ = _make_service(store=store)
@@ -508,7 +512,7 @@ class TestMoveReminder:
         )
 
     def test_reminder_not_found_raises(self):
-        store = _make_store(calendars=[MockCalendar("Personal")])
+        store = _make_store(calendars=[MockWritableCalendar("Personal")])
         store.calendarItemWithIdentifier_.return_value = None
         svc, _, _ = _make_service(store=store)
 
@@ -516,7 +520,7 @@ class TestMoveReminder:
             svc.move_reminder("rem-99", "Personal")
 
     def test_target_list_not_found_raises(self):
-        mock_rem = MockReminder("Task", "rem-42")
+        mock_rem = MockWritableReminder("Task", "rem-42")
         store = _make_store(calendars=[])
         store.calendarItemWithIdentifier_.return_value = mock_rem
         svc, _, _ = _make_service(store=store)
@@ -525,8 +529,8 @@ class TestMoveReminder:
             svc.move_reminder("rem-42", "Missing")
 
     def test_save_failure_raises(self):
-        mock_rem = MockReminder("Task", "rem-42")
-        target_cal = MockCalendar("Personal")
+        mock_rem = MockWritableReminder("Task", "rem-42")
+        target_cal = MockWritableCalendar("Personal")
         store = _make_store(calendars=[target_cal])
         store.calendarItemWithIdentifier_.return_value = mock_rem
         store.saveReminder_commit_error_.return_value = (False, "err")
@@ -542,7 +546,7 @@ class TestMoveReminder:
 
 class TestFindReminderById:
     def test_found(self):
-        mock_rem = MockReminder("Task", "rem-42")
+        mock_rem = MockWritableReminder("Task", "rem-42")
         store = _make_store()
         store.calendarItemWithIdentifier_.return_value = mock_rem
         svc, _, _ = _make_service(store=store)
@@ -702,37 +706,131 @@ class TestResolveList:
         return service
 
     def test_an_id_resolves_to_its_list(self):
-        a, b = MockCalendar("Projects", "cal-a"), MockCalendar("Projects", "cal-b")
+        a, b = MockWritableCalendar("Projects", "cal-a"), MockWritableCalendar("Projects", "cal-b")
         service = self._service([a, b])
         assert service.get_list_by_id("cal-b") is b
 
     def test_a_duplicate_title_is_exactly_why_the_id_matters(self):
         """Both lists answer to the same name; only the id distinguishes them."""
-        a, b = MockCalendar("Projects", "cal-a"), MockCalendar("Projects", "cal-b")
+        a, b = MockWritableCalendar("Projects", "cal-a"), MockWritableCalendar("Projects", "cal-b")
         service = self._service([a, b])
         assert service.get_list_by_name("Projects") is a
         assert service.get_list_by_id("cal-b") is b
 
     def test_an_id_wins_when_both_are_given(self):
-        a, b = MockCalendar("Work", "cal-a"), MockCalendar("Personal", "cal-b")
+        a, b = MockWritableCalendar("Work", "cal-a"), MockWritableCalendar("Personal", "cal-b")
         service = self._service([a, b])
         assert service.resolve_list("Work", "cal-b") is b
 
     def test_a_name_still_resolves_on_its_own(self):
-        a = MockCalendar("Work", "cal-a")
+        a = MockWritableCalendar("Work", "cal-a")
         assert self._service([a]).resolve_list("Work") is a
 
     def test_an_unknown_id_names_the_id(self):
-        service = self._service([MockCalendar("Work", "cal-a")])
+        service = self._service([MockWritableCalendar("Work", "cal-a")])
         with pytest.raises(ValueError, match="cal-zz"):
             service.resolve_list(None, "cal-zz")
 
     def test_an_unknown_name_names_the_name(self):
-        service = self._service([MockCalendar("Work", "cal-a")])
+        service = self._service([MockWritableCalendar("Work", "cal-a")])
         with pytest.raises(ValueError, match="Nope"):
             service.resolve_list("Nope")
 
     def test_neither_is_refused(self):
-        service = self._service([MockCalendar("Work", "cal-a")])
+        service = self._service([MockWritableCalendar("Work", "cal-a")])
         with pytest.raises(ValueError, match="list_name or list_id"):
             service.resolve_list()
+
+
+def _make_ns_color(components=(1.0, 0.0, 0.5), converts=True):
+    """Create a mock NSColor whose sRGB conversion yields the given components."""
+    color = MagicMock()
+    if not converts:
+        color.colorUsingColorSpace_.return_value = None
+        return color
+    srgb = MagicMock()
+    srgb.redComponent.return_value = components[0]
+    srgb.greenComponent.return_value = components[1]
+    srgb.blueComponent.return_value = components[2]
+    color.colorUsingColorSpace_.return_value = srgb
+    return color
+
+
+class TestCalendarColorHex:
+    def _hex(self, calendar):
+        with patch.dict("sys.modules", {"AppKit": MagicMock()}):
+            return EventKitService.calendar_color_hex(calendar)
+
+    def test_components_become_a_hex_string(self):
+        calendar = MockWritableCalendar("Work", color=_make_ns_color((1.0, 0.0, 0.5)))
+        assert self._hex(calendar) == "#ff0080"
+
+    def test_black_keeps_both_digits(self):
+        calendar = MockWritableCalendar("Work", color=_make_ns_color((0.0, 0.0, 0.0)))
+        assert self._hex(calendar) == "#000000"
+
+    def test_conversion_uses_the_srgb_color_space(self):
+        color = _make_ns_color()
+        appkit = MagicMock()
+        calendar = MockWritableCalendar("Work", color=color)
+        with patch.dict("sys.modules", {"AppKit": appkit}):
+            EventKitService.calendar_color_hex(calendar)
+
+        color.colorUsingColorSpace_.assert_called_once_with(
+            appkit.NSColorSpace.sRGBColorSpace()
+        )
+
+    def test_a_list_without_a_color(self):
+        assert self._hex(MockWritableCalendar("Work")) is None
+
+    def test_a_color_that_cannot_be_converted(self):
+        calendar = MockWritableCalendar("Work", color=_make_ns_color(converts=False))
+        assert self._hex(calendar) is None
+
+    @pytest.mark.parametrize(
+        "components,expected",
+        [
+            ((-0.05, 1.02, 0.5), "#00ff80"),
+            ((2.0, -1.0, 0.0), "#ff0000"),
+        ],
+    )
+    def test_wide_gamut_components_are_clamped(self, components, expected):
+        """colorUsingColorSpace_ can hand back components outside 0..1; unclamped they format as '#-d10480'."""
+        calendar = MockWritableCalendar("Work", color=_make_ns_color(components))
+        assert self._hex(calendar) == expected
+
+    def test_a_missing_appkit_does_not_take_down_the_caller(self):
+        calendar = MockWritableCalendar("Work", color=_make_ns_color())
+        with patch.dict("sys.modules", {"AppKit": None}):
+            assert EventKitService.calendar_color_hex(calendar) is None
+
+
+class TestFetchTimeout:
+    def _service_whose_fetch_never_calls_back(self):
+        store = _make_store()
+        store.fetchRemindersMatchingPredicate_completion_.side_effect = (
+            lambda predicate, callback: None
+        )
+        service, _, _ = _make_service(store=store)
+        return service
+
+    def _never_signalled(self):
+        event = MagicMock()
+        event.wait.return_value = False
+        return patch(
+            "apple_reminders_mcp.eventkit_service.threading.Event",
+            return_value=event,
+        )
+
+    def test_incomplete_reminders_time_out(self):
+        service = self._service_whose_fetch_never_calls_back()
+        with self._never_signalled():
+            with pytest.raises(TimeoutError, match="Timed out fetching reminders"):
+                service.get_all_incomplete_reminders()
+
+    def test_completed_reminders_time_out(self):
+        service = self._service_whose_fetch_never_calls_back()
+        with patch.dict("sys.modules", {"Foundation": MagicMock()}):
+            with self._never_signalled():
+                with pytest.raises(TimeoutError, match="Timed out fetching reminders"):
+                    service.get_completed_reminders_for_day(date(2026, 4, 20))

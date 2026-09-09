@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -12,98 +12,12 @@ from apple_reminders_mcp.server import (
     move_reminder,
     quick_capture,
 )
-
-
-# ---------------------------------------------------------------------------
-# Mock helpers
-# ---------------------------------------------------------------------------
-
-
-class MockCalendar:
-    _counter = 0
-
-    def __init__(self, name: str, identifier: str | None = None):
-        self._title = name
-        if identifier is not None:
-            self._identifier = identifier
-        else:
-            MockCalendar._counter += 1
-            self._identifier = f"cal-{MockCalendar._counter}"
-
-    def title(self):
-        return self._title
-
-    def calendarIdentifier(self):
-        return self._identifier
-
-
-class MockDateComponents:
-    def __init__(self, year, month, day, hour=None, minute=None):
-        self._year = year
-        self._month = month
-        self._day = day
-        self._hour = hour if hour is not None else 2**63 - 1
-        self._minute = minute if minute is not None else 2**63 - 1
-
-    def year(self):
-        return self._year
-
-    def month(self):
-        return self._month
-
-    def day(self):
-        return self._day
-
-    def hour(self):
-        return self._hour
-
-    def minute(self):
-        return self._minute
-
-
-class MockReminder:
-    def __init__(
-        self,
-        title: str = "",
-        identifier: str = "rem-1",
-        calendar: MockCalendar | None = None,
-        priority: int = 0,
-        notes: str | None = None,
-        due_components=None,
-    ):
-        self._title = title
-        self._identifier = identifier
-        self._calendar = calendar
-        self._priority = priority
-        self._notes = notes
-        self._due = due_components
-
-    def title(self):
-        return self._title
-
-    def calendarItemIdentifier(self):
-        return self._identifier
-
-    def calendar(self):
-        return self._calendar
-
-    def priority(self):
-        return self._priority
-
-    def notes(self):
-        return self._notes
-
-    def dueDateComponents(self):
-        return self._due
-
-
-@pytest.fixture()
-def mock_service():
-    service = MagicMock()
-    with patch(
-        "apple_reminders_mcp.server._get_service", return_value=service
-    ):
-        yield service
+from tests.mocks import (
+    REMINDER_KEYS,
+    MockCalendar,
+    MockDateComponents,
+    MockReminder,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -373,3 +287,50 @@ class TestListIdentifiersOnWrites:
         )
         move_reminder("rem-1", "Personal")
         mock_service.move_reminder.assert_called_once_with("rem-1", "Personal", None)
+
+
+# ---------------------------------------------------------------------------
+# Tests: the write tools return the same reminder shape the read tools do
+# ---------------------------------------------------------------------------
+
+
+class TestWriteToolsReturnTheFullReminderShape:
+    def test_create_reminder(self, mock_service):
+        mock_service.create_reminder.return_value = MockReminder(
+            title="Ship it", identifier="rem-1", calendar=MockCalendar("Work")
+        )
+
+        result = create_reminder("Ship it")
+
+        assert set(result) == REMINDER_KEYS
+        assert json.loads(json.dumps(result)) == result
+
+    def test_move_reminder(self, mock_service):
+        mock_service.move_reminder.return_value = MockReminder(
+            title="Ship it", identifier="rem-1", calendar=MockCalendar("Work")
+        )
+
+        result = move_reminder("rem-1", "Work")
+
+        assert set(result) == REMINDER_KEYS
+        assert json.loads(json.dumps(result)) == result
+
+    def test_quick_capture(self, mock_service):
+        mock_service.create_reminder.return_value = MockReminder(
+            title="Idea", identifier="rem-1", calendar=MockCalendar("Default")
+        )
+
+        result = quick_capture("Idea")
+
+        assert set(result) == REMINDER_KEYS
+        assert json.loads(json.dumps(result)) == result
+
+    def test_a_completed_reminder_reports_itself_completed(self, mock_service):
+        mock_service.move_reminder.return_value = MockReminder(
+            title="Already done",
+            identifier="rem-2",
+            calendar=MockCalendar("Work"),
+            completed=True,
+        )
+
+        assert move_reminder("rem-2", "Work")["is_completed"] is True

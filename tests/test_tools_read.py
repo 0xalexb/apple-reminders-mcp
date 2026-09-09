@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import json
 from datetime import date, datetime
-from unittest.mock import MagicMock, patch
 
 import pytest
 
 from apple_reminders_mcp.server import (
+    _UNSET_COMPONENT,
+    _format_alarm,
+    _format_attendee,
     _format_completed_reminder,
-    _format_completion_date,
     _format_due_date,
+    _format_ns_date,
     _format_priority,
+    _format_recurrence_rule,
     _format_reminder,
     create_list,
     list_reminder_lists,
@@ -17,111 +21,28 @@ from apple_reminders_mcp.server import (
     show_completed_reminders_today,
     show_incomplete_reminders,
 )
+from tests.mocks import (
+    REMINDER_KEYS,
+    MockAlarm,
+    MockCalendar,
+    MockDateComponents,
+    MockDayOfWeek,
+    MockNSDate,
+    MockNSNumber,
+    MockNSTimeZone,
+    MockNSURL,
+    MockParticipant,
+    MockRecurrenceEnd,
+    MockRecurrenceRule,
+    MockReminder,
+    MockSource,
+    MockStructuredLocation,
+)
 
 
-# ---------------------------------------------------------------------------
-# Mock helpers
-# ---------------------------------------------------------------------------
-
-
-class MockCalendar:
-    _counter = 0
-
-    def __init__(self, name: str, identifier: str | None = None):
-        self._title = name
-        if identifier is not None:
-            self._identifier = identifier
-        else:
-            MockCalendar._counter += 1
-            self._identifier = f"cal-{MockCalendar._counter}"
-
-    def title(self):
-        return self._title
-
-    def calendarIdentifier(self):
-        return self._identifier
-
-
-class MockReminder:
-    def __init__(
-        self,
-        title: str = "",
-        identifier: str = "rem-1",
-        calendar: MockCalendar | None = None,
-        priority: int = 0,
-        notes: str | None = None,
-        due_components=None,
-        completion_date=None,
-    ):
-        self._title = title
-        self._identifier = identifier
-        self._calendar = calendar
-        self._priority = priority
-        self._notes = notes
-        self._due = due_components
-        self._completion_date = completion_date
-
-    def title(self):
-        return self._title
-
-    def calendarItemIdentifier(self):
-        return self._identifier
-
-    def calendar(self):
-        return self._calendar
-
-    def priority(self):
-        return self._priority
-
-    def notes(self):
-        return self._notes
-
-    def dueDateComponents(self):
-        return self._due
-
-    def completionDate(self):
-        return self._completion_date
-
-
-class MockNSDate:
-    def __init__(self, timestamp: float):
-        self._timestamp = timestamp
-
-    def timeIntervalSince1970(self):
-        return self._timestamp
-
-
-class MockDateComponents:
-    def __init__(self, year, month, day, hour=None, minute=None):
-        self._year = year
-        self._month = month
-        self._day = day
-        self._hour = hour if hour is not None else 2**63 - 1
-        self._minute = minute if minute is not None else 2**63 - 1
-
-    def year(self):
-        return self._year
-
-    def month(self):
-        return self._month
-
-    def day(self):
-        return self._day
-
-    def hour(self):
-        return self._hour
-
-    def minute(self):
-        return self._minute
-
-
-@pytest.fixture()
-def mock_service():
-    service = MagicMock()
-    with patch(
-        "apple_reminders_mcp.server._get_service", return_value=service
-    ):
-        yield service
+def _iso(*args) -> str:
+    """The local-time ISO 8601 string, carrying the UTC offset the formatter emits."""
+    return datetime(*args).astimezone().isoformat()
 
 
 # ---------------------------------------------------------------------------
@@ -162,7 +83,7 @@ class TestFormatDueDate:
         assert _format_due_date(dc) == "2026-03-15"
 
     def test_undefined_year_returns_none(self):
-        dc = MockDateComponents(2**63 - 1, 3, 15)
+        dc = MockDateComponents(_UNSET_COMPONENT, 3, 15)
         assert _format_due_date(dc) is None
 
     def test_midnight_time(self):
@@ -198,6 +119,14 @@ class TestFormatReminder:
             "notes": "Whole milk",
             "list": "Work",
             "list_id": "cal-work",
+            "is_completed": False,
+            "start_date": None,
+            "url": None,
+            "location": None,
+            "created_at": None,
+            "last_modified_at": None,
+            "external_id": None,
+            "time_zone": None,
         }
 
     def test_minimal_reminder(self):
@@ -214,6 +143,14 @@ class TestFormatReminder:
             "notes": None,
             "list": "Default",
             "list_id": "cal-default",
+            "is_completed": False,
+            "start_date": None,
+            "url": None,
+            "location": None,
+            "created_at": None,
+            "last_modified_at": None,
+            "external_id": None,
+            "time_zone": None,
         }
 
     def test_reminder_without_calendar(self):
@@ -222,6 +159,327 @@ class TestFormatReminder:
         result = _format_reminder(rem)
 
         assert result["list"] is None
+
+    def test_all_scalar_fields_populated(self):
+        cal = MockCalendar("Work", identifier="cal-work")
+        created = datetime(2026, 1, 2, 8, 15).timestamp()
+        modified = datetime(2026, 1, 3, 9, 45, 30).timestamp()
+        rem = MockReminder(
+            title="Ship it",
+            identifier="rem-7",
+            calendar=cal,
+            completion_date=MockNSDate(modified),
+            start_components=MockDateComponents(2026, 3, 1, 9, 0),
+            url=MockNSURL("https://example.com/task"),
+            location="Office",
+            creation_date=MockNSDate(created),
+            last_modified_date=MockNSDate(modified),
+            external_id="ext-7",
+            time_zone=MockNSTimeZone("Europe/Berlin"),
+        )
+
+        result = _format_reminder(rem)
+
+        assert result["is_completed"] is True
+        assert result["start_date"] == "2026-03-01T09:00"
+        assert result["url"] == "https://example.com/task"
+        assert result["location"] == "Office"
+        assert result["created_at"] == _iso(2026, 1, 2, 8, 15)
+        assert result["last_modified_at"] == _iso(2026, 1, 3, 9, 45, 30)
+        assert result["external_id"] == "ext-7"
+        assert result["time_zone"] == "Europe/Berlin"
+
+    def test_bare_reminder_emits_scalars_rather_than_omitting_them(self):
+        rem = MockReminder(title="Bare", identifier="rem-8")
+
+        result = _format_reminder(rem)
+
+        assert set(result) == REMINDER_KEYS
+        assert result["is_completed"] is False
+        for key in (
+            "start_date",
+            "url",
+            "location",
+            "created_at",
+            "last_modified_at",
+            "external_id",
+            "time_zone",
+        ):
+            assert key in result
+            assert result[key] is None
+
+    def test_start_date_unset_sentinel_returns_none(self):
+        rem = MockReminder(
+            title="Floating",
+            identifier="rem-10",
+            start_components=MockDateComponents(_UNSET_COMPONENT, 3, 15),
+        )
+
+        assert _format_reminder(rem)["start_date"] is None
+
+
+class TestFormatAlarm:
+    def test_absolute_time_alarm(self):
+        ts = datetime(2026, 3, 15, 9, 0).timestamp()
+        alarm = MockAlarm(absolute_date=MockNSDate(ts))
+
+        assert _format_alarm(alarm) == {
+            "absolute_date": _iso(2026, 3, 15, 9, 0),
+            "relative_offset": None,
+            "proximity": "none",
+        }
+
+    def test_relative_offset_alarm(self):
+        alarm = MockAlarm(relative_offset=-3600.0)
+
+        assert _format_alarm(alarm) == {
+            "absolute_date": None,
+            "relative_offset": -3600.0,
+            "proximity": "none",
+        }
+
+    def test_geofence_alarm(self):
+        alarm = MockAlarm(
+            proximity=1,
+            structured_location=MockStructuredLocation("Home", 150.0),
+        )
+
+        assert _format_alarm(alarm) == {
+            "absolute_date": None,
+            "relative_offset": None,
+            "proximity": "enter",
+            "location": {"title": "Home", "radius": 150.0},
+        }
+
+    def test_leave_proximity(self):
+        alarm = MockAlarm(
+            proximity=2,
+            structured_location=MockStructuredLocation("Office", 200.0),
+        )
+
+        result = _format_alarm(alarm)
+
+        assert result["proximity"] == "leave"
+        assert result["relative_offset"] is None
+        assert result["location"] == {"title": "Office", "radius": 200.0}
+
+
+class TestReminderAlarms:
+    def test_alarms_included_when_present(self):
+        ts = datetime(2026, 3, 15, 9, 0).timestamp()
+        rem = MockReminder(
+            title="Wake up",
+            identifier="rem-11",
+            alarms=[
+                MockAlarm(absolute_date=MockNSDate(ts)),
+                MockAlarm(relative_offset=-900.0),
+            ],
+        )
+
+        result = _format_reminder(rem)
+
+        assert result["alarms"] == [
+            {
+                "absolute_date": _iso(2026, 3, 15, 9, 0),
+                "relative_offset": None,
+                "proximity": "none",
+            },
+            {
+                "absolute_date": None,
+                "relative_offset": -900.0,
+                "proximity": "none",
+            },
+        ]
+
+    def test_no_alarms_key_absent(self):
+        rem = MockReminder(title="Bare", identifier="rem-12")
+
+        assert "alarms" not in _format_reminder(rem)
+
+
+class TestFormatRecurrenceRule:
+    def test_simple_daily_rule(self):
+        rule = MockRecurrenceRule(frequency=0, interval=1)
+
+        assert _format_recurrence_rule(rule) == {
+            "frequency": "daily",
+            "interval": 1,
+            "end_date": None,
+            "occurrence_count": None,
+        }
+
+    def test_every_two_weeks_on_monday_and_wednesday(self):
+        rule = MockRecurrenceRule(
+            frequency=1,
+            interval=2,
+            days_of_week=[MockDayOfWeek(2), MockDayOfWeek(4)],
+        )
+
+        result = _format_recurrence_rule(rule)
+
+        assert result["frequency"] == "weekly"
+        assert result["interval"] == 2
+        assert result["days_of_week"] == [
+            {"day": 2, "week_number": None},
+            {"day": 4, "week_number": None},
+        ]
+
+    def test_first_monday_of_every_month(self):
+        rule = MockRecurrenceRule(
+            frequency=2,
+            days_of_week=[MockDayOfWeek(2, week_number=1)],
+        )
+
+        result = _format_recurrence_rule(rule)
+
+        assert result["frequency"] == "monthly"
+        assert result["days_of_week"] == [{"day": 2, "week_number": 1}]
+
+    def test_numeric_collections_are_coerced_to_int(self):
+        rule = MockRecurrenceRule(
+            frequency=3,
+            days_of_month=[MockNSNumber(1), MockNSNumber(15)],
+            months_of_year=[MockNSNumber(6)],
+            set_positions=[MockNSNumber(-1)],
+        )
+
+        result = _format_recurrence_rule(rule)
+
+        assert result["days_of_month"] == [1, 15]
+        assert result["months_of_year"] == [6]
+        assert result["set_positions"] == [-1]
+        for value in (
+            result["days_of_month"]
+            + result["months_of_year"]
+            + result["set_positions"]
+        ):
+            assert type(value) is int
+
+    def test_rule_ending_on_a_date(self):
+        ts = datetime(2026, 6, 30, 12, 0).timestamp()
+        rule = MockRecurrenceRule(
+            frequency=1,
+            interval=2,
+            recurrence_end=MockRecurrenceEnd(end_date=MockNSDate(ts)),
+        )
+
+        result = _format_recurrence_rule(rule)
+
+        assert result["end_date"] == _iso(2026, 6, 30, 12, 0)
+        assert result["occurrence_count"] is None
+
+    def test_rule_ending_after_occurrences(self):
+        rule = MockRecurrenceRule(
+            frequency=0,
+            recurrence_end=MockRecurrenceEnd(occurrence_count=10),
+        )
+
+        result = _format_recurrence_rule(rule)
+
+        assert result["end_date"] is None
+        assert result["occurrence_count"] == 10
+
+    def test_empty_collections_are_omitted(self):
+        rule = MockRecurrenceRule(
+            frequency=0,
+            days_of_week=[],
+            days_of_month=[],
+            months_of_year=[],
+            set_positions=[],
+        )
+
+        result = _format_recurrence_rule(rule)
+
+        for key in ("days_of_week", "days_of_month", "months_of_year", "set_positions"):
+            assert key not in result
+
+
+class TestReminderRecurrence:
+    def test_recurrence_included_when_present(self):
+        rem = MockReminder(
+            title="Standup",
+            identifier="rem-13",
+            recurrence_rules=[MockRecurrenceRule(frequency=1, interval=2)],
+        )
+
+        result = _format_reminder(rem)
+
+        assert result["recurrence"] == [
+            {
+                "frequency": "weekly",
+                "interval": 2,
+                "end_date": None,
+                "occurrence_count": None,
+            }
+        ]
+
+    def test_no_rules_key_absent(self):
+        rem = MockReminder(title="Bare", identifier="rem-14")
+
+        assert "recurrence" not in _format_reminder(rem)
+
+
+class TestFormatAttendee:
+    def test_attendee_with_url_and_status(self):
+        participant = MockParticipant(
+            "Alice", url=MockNSURL("mailto:alice@example.com"), status=2
+        )
+
+        assert _format_attendee(participant) == {
+            "name": "Alice",
+            "url": "mailto:alice@example.com",
+            "status": "accepted",
+        }
+
+    def test_attendee_without_url(self):
+        participant = MockParticipant("Bob", status=1)
+
+        assert _format_attendee(participant) == {
+            "name": "Bob",
+            "url": None,
+            "status": "pending",
+        }
+
+
+class TestReminderAttendees:
+    def test_attendees_included_when_present(self):
+        rem = MockReminder(
+            title="Shared task",
+            identifier="rem-15",
+            attendees=[
+                MockParticipant(
+                    "Alice", url=MockNSURL("mailto:alice@example.com"), status=2
+                ),
+                MockParticipant(
+                    "Bob", url=MockNSURL("mailto:bob@example.com"), status=3
+                ),
+            ],
+        )
+
+        result = _format_reminder(rem)
+
+        assert result["attendees"] == [
+            {
+                "name": "Alice",
+                "url": "mailto:alice@example.com",
+                "status": "accepted",
+            },
+            {
+                "name": "Bob",
+                "url": "mailto:bob@example.com",
+                "status": "declined",
+            },
+        ]
+
+    def test_none_attendees_key_absent(self):
+        rem = MockReminder(title="Bare", identifier="rem-16", attendees=None)
+
+        assert "attendees" not in _format_reminder(rem)
+
+    def test_empty_attendees_key_absent(self):
+        rem = MockReminder(title="Bare", identifier="rem-17", attendees=[])
+
+        assert "attendees" not in _format_reminder(rem)
 
 
 # ---------------------------------------------------------------------------
@@ -234,6 +492,7 @@ class TestListReminderLists:
         cal_work = MockCalendar("Work", identifier="cal-work")
         cal_personal = MockCalendar("Personal", identifier="cal-personal")
         mock_service.get_all_lists.return_value = [cal_work, cal_personal]
+        mock_service.calendar_color_hex.return_value = "#ff0080"
 
         rem1 = MockReminder("Task 1", calendar=cal_work)
         rem2 = MockReminder("Task 2", calendar=cal_work)
@@ -247,8 +506,26 @@ class TestListReminderLists:
         result = list_reminder_lists()
 
         assert result == [
-            {"id": "cal-work", "name": "Work", "incomplete_count": 2},
-            {"id": "cal-personal", "name": "Personal", "incomplete_count": 1},
+            {
+                "id": "cal-work",
+                "name": "Work",
+                "incomplete_count": 2,
+                "color": "#ff0080",
+                "source_name": None,
+                "source_type": None,
+                "writable": True,
+                "is_subscribed": False,
+            },
+            {
+                "id": "cal-personal",
+                "name": "Personal",
+                "incomplete_count": 1,
+                "color": "#ff0080",
+                "source_name": None,
+                "source_type": None,
+                "writable": True,
+                "is_subscribed": False,
+            },
         ]
 
     def test_empty_lists(self, mock_service):
@@ -261,12 +538,105 @@ class TestListReminderLists:
         cal = MockCalendar("Empty", identifier="cal-empty")
         mock_service.get_all_lists.return_value = [cal]
         mock_service.get_all_incomplete_reminders.return_value = []
+        mock_service.calendar_color_hex.return_value = None
 
         result = list_reminder_lists()
 
         assert result == [
-            {"id": "cal-empty", "name": "Empty", "incomplete_count": 0}
+            {
+                "id": "cal-empty",
+                "name": "Empty",
+                "incomplete_count": 0,
+                "color": None,
+                "source_name": None,
+                "source_type": None,
+                "writable": True,
+                "is_subscribed": False,
+            }
         ]
+
+    def test_writable_icloud_list(self, mock_service):
+        cal = MockCalendar(
+            "Groceries",
+            identifier="cal-icloud",
+            source=MockSource("iCloud", 2),
+        )
+        mock_service.get_all_lists.return_value = [cal]
+        mock_service.get_all_incomplete_reminders.return_value = []
+        mock_service.calendar_color_hex.return_value = "#ff0080"
+
+        row = list_reminder_lists()[0]
+
+        assert len(row) == 8
+        assert row["color"] == "#ff0080"
+        assert row["source_name"] == "iCloud"
+        assert row["source_type"] == "caldav"
+        assert row["writable"] is True
+        assert row["is_subscribed"] is False
+
+    def test_read_only_subscribed_list(self, mock_service):
+        cal = MockCalendar(
+            "Holidays",
+            identifier="cal-sub",
+            source=MockSource("Subscribed Calendars", 4),
+            allows_modifications=False,
+            subscribed=True,
+        )
+        mock_service.get_all_lists.return_value = [cal]
+        mock_service.get_all_incomplete_reminders.return_value = []
+        mock_service.calendar_color_hex.return_value = "#00ff00"
+
+        row = list_reminder_lists()[0]
+
+        assert row["source_type"] == "subscribed"
+        assert row["writable"] is False
+        assert row["is_subscribed"] is True
+
+    def test_list_without_a_source(self, mock_service):
+        cal = MockCalendar("Orphan", identifier="cal-orphan", source=None)
+        mock_service.get_all_lists.return_value = [cal]
+        mock_service.get_all_incomplete_reminders.return_value = []
+        mock_service.calendar_color_hex.return_value = None
+
+        row = list_reminder_lists()[0]
+
+        assert row["source_name"] is None
+        assert row["source_type"] is None
+
+    def test_each_row_carries_its_own_colour_and_source(self, mock_service):
+        """Two rows, two colours, two accounts: proves the per-row lookup, not one shared answer."""
+        work = MockCalendar(
+            "Work", identifier="cal-work", source=MockSource("iCloud", 2)
+        )
+        local = MockCalendar(
+            "Local",
+            identifier="cal-local",
+            source=MockSource("On My Mac", 0),
+            allows_modifications=False,
+            subscribed=True,
+        )
+        colors = {"cal-work": "#ff0080", "cal-local": "#00ff00"}
+        mock_service.get_all_lists.return_value = [work, local]
+        mock_service.get_all_incomplete_reminders.return_value = []
+        mock_service.calendar_color_hex.side_effect = (
+            lambda cal: colors[cal.calendarIdentifier()]
+        )
+
+        rows = {row["id"]: row for row in list_reminder_lists()}
+
+        assert rows["cal-work"]["color"] == "#ff0080"
+        assert rows["cal-local"]["color"] == "#00ff00"
+        assert rows["cal-work"]["source_name"] == "iCloud"
+        assert rows["cal-local"]["source_name"] == "On My Mac"
+        assert rows["cal-work"]["source_type"] == "caldav"
+        assert rows["cal-local"]["source_type"] == "local"
+        assert rows["cal-work"]["writable"] is True
+        assert rows["cal-local"]["writable"] is False
+        assert rows["cal-work"]["is_subscribed"] is False
+        assert rows["cal-local"]["is_subscribed"] is True
+        assert [
+            call.args[0] for call in mock_service.calendar_color_hex.call_args_list
+        ] == [work, local]
 
 
 # ---------------------------------------------------------------------------
@@ -315,6 +685,14 @@ class TestShowIncompleteReminders:
                 "notes": "Whole milk",
                 "list": "Work",
                 "list_id": "cal-work",
+                "is_completed": False,
+                "start_date": None,
+                "url": None,
+                "location": None,
+                "created_at": None,
+                "last_modified_at": None,
+                "external_id": None,
+                "time_zone": None,
             }
         ]
         mock_service.get_incomplete_reminders.assert_called_once_with("Work", None)
@@ -342,6 +720,14 @@ class TestShowIncompleteReminders:
                 "notes": None,
                 "list": "Work",
                 "list_id": "cal-work",
+                "is_completed": False,
+                "start_date": None,
+                "url": None,
+                "location": None,
+                "created_at": None,
+                "last_modified_at": None,
+                "external_id": None,
+                "time_zone": None,
             }
         ]
 
@@ -400,16 +786,40 @@ class TestShowAllIncompleteReminders:
 # ---------------------------------------------------------------------------
 
 
-class TestFormatCompletionDate:
+class TestFormatNsDate:
     def test_none(self):
-        assert _format_completion_date(None) is None
+        assert _format_ns_date(None) is None
 
-    def test_formats_iso(self):
+    def test_an_nsdate_becomes_an_offset_carrying_iso_string(self):
         ts = datetime(2026, 4, 20, 14, 30, 5).timestamp()
-        assert (
-            _format_completion_date(MockNSDate(ts))
-            == "2026-04-20T14:30:05"
+
+        result = _format_ns_date(MockNSDate(ts))
+
+        assert result == _iso(2026, 4, 20, 14, 30, 5)
+        assert datetime.fromisoformat(result).utcoffset() is not None
+
+    @pytest.mark.parametrize(
+        "timestamp",
+        [
+            -63114076800.0,  # NSDate.distantPast, year 1
+            1e18,
+            -1e18,
+        ],
+    )
+    def test_unrepresentable_dates_return_none_rather_than_raising(self, timestamp):
+        assert _format_ns_date(MockNSDate(timestamp)) is None
+
+    def test_one_unrepresentable_date_does_not_sink_the_whole_reminder(self):
+        rem = MockReminder(
+            title="Synced from elsewhere",
+            identifier="rem-18",
+            creation_date=MockNSDate(-63114076800.0),
         )
+
+        result = _format_reminder(rem)
+
+        assert result["created_at"] is None
+        assert result["title"] == "Synced from elsewhere"
 
 
 class TestFormatCompletedReminder:
@@ -428,7 +838,7 @@ class TestFormatCompletedReminder:
         assert result["id"] == "rem-9"
         assert result["title"] == "Done"
         assert result["list"] == "Work"
-        assert result["completion_date"] == "2026-04-20T09:00:00"
+        assert result["completion_date"] == _iso(2026, 4, 20, 9, 0)
 
     def test_missing_completion_date(self):
         cal = MockCalendar("Work")
@@ -467,7 +877,15 @@ class TestShowCompletedRemindersToday:
                 "notes": None,
                 "list": "Work",
                 "list_id": "cal-work",
-                "completion_date": "2026-04-20T09:00:00",
+                "is_completed": True,
+                "start_date": None,
+                "url": None,
+                "location": None,
+                "created_at": None,
+                "last_modified_at": None,
+                "external_id": None,
+                "time_zone": None,
+                "completion_date": _iso(2026, 4, 20, 9, 0),
             }
         ]
         mock_service.get_completed_reminders_for_day.assert_called_once_with(
@@ -533,3 +951,245 @@ class TestListIdentifiers:
 
         assert result[0]["list"] is None
         assert result[0]["list_id"] is None
+
+
+class TestUnmappedEnumValues:
+    def test_an_unknown_alarm_proximity(self):
+        assert _format_alarm(MockAlarm(proximity=99))["proximity"] == "custom(99)"
+
+    def test_an_unknown_recurrence_frequency(self):
+        rule = MockRecurrenceRule(frequency=99)
+        assert _format_recurrence_rule(rule)["frequency"] == "custom(99)"
+
+    def test_an_unknown_participant_status(self):
+        participant = MockParticipant("Alice", status=99)
+        assert _format_attendee(participant)["status"] == "custom(99)"
+
+    def test_an_unknown_source_type(self, mock_service):
+        cal = MockCalendar(
+            "Odd", identifier="cal-odd", source=MockSource("Elsewhere", 99)
+        )
+        mock_service.get_all_lists.return_value = [cal]
+        mock_service.get_all_incomplete_reminders.return_value = []
+
+        assert list_reminder_lists()[0]["source_type"] == "custom(99)"
+
+
+def _kitchen_sink_reminder(completion_date=None):
+    return MockReminder(
+        completion_date=completion_date,
+        title="Everything",
+        identifier="rem-20",
+        calendar=MockCalendar("Work", identifier="cal-work"),
+        priority=5,
+        notes="All of it",
+        due_components=MockDateComponents(2026, 3, 15, 10, 30),
+        start_components=MockDateComponents(2026, 3, 1, 9, 0),
+        url=MockNSURL("https://example.com/task"),
+        location="Office",
+        creation_date=MockNSDate(datetime(2026, 1, 2, 8, 15).timestamp()),
+        last_modified_date=MockNSDate(datetime(2026, 1, 3, 9, 45).timestamp()),
+        external_id="ext-20",
+        time_zone=MockNSTimeZone("Europe/Berlin"),
+        alarms=[
+            MockAlarm(relative_offset=-900.0),
+            MockAlarm(
+                proximity=1,
+                structured_location=MockStructuredLocation("Home", 150.0),
+            ),
+            MockAlarm(
+                proximity=2,
+                structured_location=MockStructuredLocation("Office", 200.0),
+            ),
+        ],
+        recurrence_rules=[
+            MockRecurrenceRule(
+                frequency=1, interval=2, days_of_week=[MockDayOfWeek(2)]
+            ),
+            MockRecurrenceRule(
+                frequency=2,
+                days_of_month=[MockNSNumber(1)],
+                recurrence_end=MockRecurrenceEnd(occurrence_count=5),
+            ),
+        ],
+        attendees=[MockParticipant("Alice", status=2)],
+    )
+
+
+class TestReminderWithEveryCollection:
+    def test_the_full_eighteen_key_shape(self):
+        result = _format_reminder(_kitchen_sink_reminder())
+
+        assert result == {
+            "id": "rem-20",
+            "title": "Everything",
+            "due_date": "2026-03-15T10:30",
+            "priority": "medium",
+            "notes": "All of it",
+            "list": "Work",
+            "list_id": "cal-work",
+            "is_completed": False,
+            "start_date": "2026-03-01T09:00",
+            "url": "https://example.com/task",
+            "location": "Office",
+            "created_at": _iso(2026, 1, 2, 8, 15),
+            "last_modified_at": _iso(2026, 1, 3, 9, 45),
+            "external_id": "ext-20",
+            "time_zone": "Europe/Berlin",
+            "alarms": [
+                {
+                    "absolute_date": None,
+                    "relative_offset": -900.0,
+                    "proximity": "none",
+                },
+                {
+                    "absolute_date": None,
+                    "relative_offset": None,
+                    "proximity": "enter",
+                    "location": {"title": "Home", "radius": 150.0},
+                },
+                {
+                    "absolute_date": None,
+                    "relative_offset": None,
+                    "proximity": "leave",
+                    "location": {"title": "Office", "radius": 200.0},
+                },
+            ],
+            "recurrence": [
+                {
+                    "frequency": "weekly",
+                    "interval": 2,
+                    "days_of_week": [{"day": 2, "week_number": None}],
+                    "end_date": None,
+                    "occurrence_count": None,
+                },
+                {
+                    "frequency": "monthly",
+                    "interval": 1,
+                    "days_of_month": [1],
+                    "end_date": None,
+                    "occurrence_count": 5,
+                },
+            ],
+            "attendees": [{"name": "Alice", "url": None, "status": "accepted"}],
+        }
+
+    def test_null_collections_leave_the_keys_absent(self):
+        rem = MockReminder(
+            title="Never synced",
+            identifier="rem-21",
+            alarms=None,
+            recurrence_rules=None,
+            attendees=None,
+        )
+
+        result = _format_reminder(rem)
+
+        assert "alarms" not in result
+        assert "recurrence" not in result
+        assert "attendees" not in result
+
+
+class TestTheTwoDateKinds:
+    def test_wall_clock_dates_stay_naive_while_instants_carry_an_offset(self):
+        result = _format_reminder(_kitchen_sink_reminder())
+
+        assert result["due_date"] == "2026-03-15T10:30"
+        assert result["start_date"] == "2026-03-01T09:00"
+        assert datetime.fromisoformat(result["due_date"]).utcoffset() is None
+        assert datetime.fromisoformat(result["start_date"]).utcoffset() is None
+
+        assert result["created_at"] == _iso(2026, 1, 2, 8, 15)
+        assert result["last_modified_at"] == _iso(2026, 1, 3, 9, 45)
+        assert datetime.fromisoformat(result["created_at"]).utcoffset() is not None
+        assert (
+            datetime.fromisoformat(result["last_modified_at"]).utcoffset() is not None
+        )
+
+    def test_a_date_only_due_date_has_nowhere_to_carry_an_offset(self):
+        rem = MockReminder(
+            title="Someday",
+            identifier="rem-22",
+            due_components=MockDateComponents(2026, 3, 15),
+            creation_date=MockNSDate(datetime(2026, 1, 2, 8, 15).timestamp()),
+        )
+
+        result = _format_reminder(rem)
+
+        assert result["due_date"] == "2026-03-15"
+        assert datetime.fromisoformat(result["created_at"]).utcoffset() is not None
+
+    def test_ordering_the_two_kinds_directly_is_a_typeerror(self):
+        result = _format_reminder(_kitchen_sink_reminder())
+
+        with pytest.raises(TypeError):
+            datetime.fromisoformat(result["created_at"]) < datetime.fromisoformat(
+                result["due_date"]
+            )
+
+    def test_subtracting_the_two_kinds_directly_is_a_typeerror(self):
+        result = _format_reminder(_kitchen_sink_reminder())
+
+        with pytest.raises(TypeError):
+            datetime.fromisoformat(result["created_at"]) - datetime.fromisoformat(
+                result["due_date"]
+            )
+
+    def test_equality_across_the_two_kinds_is_false_rather_than_raising(self):
+        """The silent case: identical wall clocks still compare unequal, and nothing signals."""
+        same_wall_clock = datetime(2026, 1, 2, 8, 15)
+        rem = MockReminder(
+            title="Same clock",
+            identifier="rem-eq",
+            due_components=MockDateComponents(2026, 1, 2, 8, 15),
+            creation_date=MockNSDate(same_wall_clock.timestamp()),
+        )
+        result = _format_reminder(rem)
+        instant = datetime.fromisoformat(result["created_at"])
+        wall_clock = datetime.fromisoformat(result["due_date"])
+
+        assert instant.replace(tzinfo=None) == wall_clock
+        assert instant.utcoffset() is not None and wall_clock.utcoffset() is None
+        assert (instant == wall_clock) is False
+        assert (instant != wall_clock) is True
+
+
+class TestPayloadsAreJsonSerialisable:
+    def test_list_reminder_lists(self, mock_service):
+        cal = MockCalendar(
+            "Work", identifier="cal-work", source=MockSource("iCloud", 2)
+        )
+        mock_service.get_all_lists.return_value = [cal]
+        mock_service.get_all_incomplete_reminders.return_value = []
+
+        payload = list_reminder_lists()
+
+        assert json.loads(json.dumps(payload)) == payload
+
+    def test_show_incomplete_reminders(self, mock_service):
+        mock_service.get_incomplete_reminders.return_value = [
+            _kitchen_sink_reminder()
+        ]
+
+        payload = show_incomplete_reminders("Work")
+
+        assert json.loads(json.dumps(payload)) == payload
+
+    def test_show_all_incomplete_reminders(self, mock_service):
+        mock_service.get_all_incomplete_reminders.return_value = [
+            _kitchen_sink_reminder()
+        ]
+
+        payload = show_all_incomplete_reminders()
+
+        assert json.loads(json.dumps(payload)) == payload
+
+    def test_show_completed_reminders_today(self, mock_service):
+        rem = _kitchen_sink_reminder(
+            completion_date=MockNSDate(datetime(2026, 4, 20, 9, 0).timestamp())
+        )
+        mock_service.get_completed_reminders_for_day.return_value = [rem]
+
+        payload = show_completed_reminders_today()
+
+        assert json.loads(json.dumps(payload)) == payload

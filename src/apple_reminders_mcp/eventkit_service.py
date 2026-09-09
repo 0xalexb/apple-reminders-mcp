@@ -114,6 +114,33 @@ class EventKitService:
             raise RuntimeError(f"Failed to create list: {error}")
         return calendar
 
+    @classmethod
+    def calendar_color_hex(cls, calendar: Any) -> str | None:
+        """Return a list's colour as '#rrggbb', or None when it has none."""
+        try:
+            import AppKit
+        except ImportError:
+            return None
+
+        color = calendar.color()
+        if color is None:
+            return None
+        srgb = color.colorUsingColorSpace_(AppKit.NSColorSpace.sRGBColorSpace())
+        if srgb is None:
+            return None
+        red = cls._color_byte(srgb.redComponent())
+        green = cls._color_byte(srgb.greenComponent())
+        blue = cls._color_byte(srgb.blueComponent())
+        return f"#{red:02x}{green:02x}{blue:02x}"
+
+    @classmethod
+    def _color_byte(cls, component: float) -> int:
+        """Scale an sRGB component to 0-255.
+
+        Clamps the out-of-range values a wide-gamut colour carries.
+        """
+        return max(0, min(255, round(component * 255)))
+
     def get_incomplete_reminders(
         self, list_name: str | None = None, list_id: str | None = None
     ) -> list[Any]:
