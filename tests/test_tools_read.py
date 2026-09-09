@@ -1136,11 +1136,20 @@ class TestTheTwoDateKinds:
             )
 
     def test_equality_across_the_two_kinds_is_false_rather_than_raising(self):
-        """The silent case the README warns about: == never matches and never signals."""
-        result = _format_reminder(_kitchen_sink_reminder())
+        """The silent case: identical wall clocks still compare unequal, and nothing signals."""
+        same_wall_clock = datetime(2026, 1, 2, 8, 15)
+        rem = MockReminder(
+            title="Same clock",
+            identifier="rem-eq",
+            due_components=MockDateComponents(2026, 1, 2, 8, 15),
+            creation_date=MockNSDate(same_wall_clock.timestamp()),
+        )
+        result = _format_reminder(rem)
         instant = datetime.fromisoformat(result["created_at"])
         wall_clock = datetime.fromisoformat(result["due_date"])
 
+        assert instant.replace(tzinfo=None) == wall_clock
+        assert instant.utcoffset() is not None and wall_clock.utcoffset() is None
         assert (instant == wall_clock) is False
         assert (instant != wall_clock) is True
 

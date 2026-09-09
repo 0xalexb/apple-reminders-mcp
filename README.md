@@ -160,8 +160,9 @@ at 10:30 is still due at 10:30 after you fly somewhere else. Interpret them in t
 Make the naive value aware before comparing. `time_zone` is `NSTimeZone.name()`, which is usually an
 IANA key but is a bare offset (`GMT`, `GMT+0200`, `GMT-0500`) whenever the zone was built from an
 offset rather than a region - including for reminders this server itself creates from a due date
-carrying an offset, such as `"2026-03-15T10:30:00+02:00"`. `ZoneInfo` raises
-`ZoneInfoNotFoundError` on those, so handle both forms:
+carrying an offset, such as `"2026-03-15T10:30:00+02:00"`. Bare `GMT` is itself a tzdata entry and
+resolves normally; the signed forms (`GMT+0200`, `GMT-0500`) raise `ZoneInfoNotFoundError`, so
+handle them separately. Note the sign is Foundation's, the opposite of tzdata's `Etc/GMT+2`:
 
 ```python
 from datetime import datetime, timedelta, timezone
@@ -174,8 +175,6 @@ def tzinfo_for(name: str | None):
     try:
         return ZoneInfo(name)
     except (ZoneInfoNotFoundError, ValueError):
-        if name == "GMT":
-            return timezone.utc
         if len(name) == 8 and name.startswith("GMT") and name[3] in "+-":
             sign = -1 if name[3] == "-" else 1
             delta = timedelta(hours=int(name[4:6]), minutes=int(name[6:8]))
