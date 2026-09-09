@@ -2,6 +2,26 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+from apple_reminders_mcp.server import _UNSET_COMPONENT
+
+REMINDER_KEYS = {
+    "id",
+    "title",
+    "due_date",
+    "priority",
+    "notes",
+    "list",
+    "list_id",
+    "is_completed",
+    "start_date",
+    "url",
+    "location",
+    "created_at",
+    "last_modified_at",
+    "external_id",
+    "time_zone",
+}
+
 
 class MockSource:
     def __init__(self, title: str, source_type: int):
@@ -65,7 +85,7 @@ class MockReminder:
         alarms=None,
         recurrence_rules=None,
         attendees=None,
-        completed: bool = False,
+        completed: bool | None = None,
         completion_date=None,
     ):
         self._title = title
@@ -84,7 +104,9 @@ class MockReminder:
         self._alarms = alarms
         self._recurrence_rules = recurrence_rules
         self._attendees = attendees
-        self._completed = completed or completion_date is not None
+        self._completed = (
+            completion_date is not None if completed is None else completed
+        )
         self._completion_date = completion_date
 
     def title(self):
@@ -147,8 +169,8 @@ class MockDateComponents:
         self._year = year
         self._month = month
         self._day = day
-        self._hour = hour if hour is not None else 2**63 - 1
-        self._minute = minute if minute is not None else 2**63 - 1
+        self._hour = hour if hour is not None else _UNSET_COMPONENT
+        self._minute = minute if minute is not None else _UNSET_COMPONENT
 
     def year(self):
         return self._year

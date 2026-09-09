@@ -206,7 +206,7 @@ uv run ruff check src/ tests/
 
 - `src/apple_reminders_mcp/server.py` - MCPServer with tool definitions
 - `src/apple_reminders_mcp/eventkit_service.py` - EventKit service layer; macOS-only framework
-  imports (`EventKit`, `AppKit`, `Foundation`) are function-local and confined to this file
+  imports are confined to this file
 - `tests/` - Test suite with mocked EventKit objects (runs on any platform)
 
 ## Uninstall

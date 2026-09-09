@@ -46,12 +46,31 @@ _SOURCE_TYPE_LABELS = {
 }
 
 
-def _format_enum(labels: dict[int, str], value: int) -> str:
+_UNSET_COMPONENT = 2**63 - 1
+
+
+def _format_enum(value: int, labels: dict[int, str]) -> str:
     return labels.get(value, f"custom({value})")
 
 
 def _format_priority(priority: int) -> str:
-    return _format_enum(_PRIORITY_LABELS, priority)
+    return _format_enum(priority, _PRIORITY_LABELS)
+
+
+def _format_alarm_proximity(proximity: int) -> str:
+    return _format_enum(proximity, _ALARM_PROXIMITY_LABELS)
+
+
+def _format_recurrence_frequency(frequency: int) -> str:
+    return _format_enum(frequency, _RECURRENCE_FREQUENCY_LABELS)
+
+
+def _format_participant_status(status: int) -> str:
+    return _format_enum(status, _PARTICIPANT_STATUS_LABELS)
+
+
+def _format_source_type(source_type: int) -> str:
+    return _format_enum(source_type, _SOURCE_TYPE_LABELS)
 
 
 def _format_due_date(components) -> str | None:
@@ -62,8 +81,7 @@ def _format_due_date(components) -> str | None:
     day = components.day()
     hour = components.hour()
     minute = components.minute()
-    _SENTINEL = 2**63 - 1
-    if year > 9999 or month == _SENTINEL or day == _SENTINEL:
+    if year > 9999 or month == _UNSET_COMPONENT or day == _UNSET_COMPONENT:
         return None
     date_str = f"{year:04d}-{month:02d}-{day:02d}"
     if 0 <= hour <= 23 and 0 <= minute <= 59:
@@ -81,9 +99,8 @@ def _format_ns_date(ns_date) -> str | None:
     if ns_date is None:
         return None
     try:
-        return datetime.fromtimestamp(
-            ns_date.timeIntervalSince1970()
-        ).astimezone().isoformat()
+        timestamp = ns_date.timeIntervalSince1970()
+        return datetime.fromtimestamp(timestamp).astimezone().isoformat()
     except (ValueError, OSError, OverflowError):
         return None
 
@@ -98,7 +115,7 @@ def _format_alarm(alarm) -> dict:
             if absolute is not None or structured is not None
             else alarm.relativeOffset()
         ),
-        "proximity": _format_enum(_ALARM_PROXIMITY_LABELS, alarm.proximity()),
+        "proximity": _format_alarm_proximity(alarm.proximity()),
     }
     if structured is not None:
         data["location"] = {
@@ -110,7 +127,7 @@ def _format_alarm(alarm) -> dict:
 
 def _format_recurrence_rule(rule) -> dict:
     data = {
-        "frequency": _format_enum(_RECURRENCE_FREQUENCY_LABELS, rule.frequency()),
+        "frequency": _format_recurrence_frequency(rule.frequency()),
         "interval": rule.interval(),
     }
     days_of_week = rule.daysOfTheWeek()
@@ -119,18 +136,22 @@ def _format_recurrence_rule(rule) -> dict:
             {"day": day.dayOfTheWeek(), "week_number": day.weekNumber() or None}
             for day in days_of_week
         ]
-    for key, values in (
-        ("days_of_month", rule.daysOfTheMonth()),
-        ("months_of_year", rule.monthsOfTheYear()),
-        ("set_positions", rule.setPositions()),
-    ):
-        if values:
-            data[key] = [int(value) for value in values]
+    days_of_month = rule.daysOfTheMonth()
+    if days_of_month:
+        data["days_of_month"] = [int(value) for value in days_of_month]
+    months_of_year = rule.monthsOfTheYear()
+    if months_of_year:
+        data["months_of_year"] = [int(value) for value in months_of_year]
+    set_positions = rule.setPositions()
+    if set_positions:
+        data["set_positions"] = [int(value) for value in set_positions]
     end = rule.recurrenceEnd()
-    data["end_date"] = _format_ns_date(end.endDate()) if end is not None else None
-    data["occurrence_count"] = (
-        (end.occurrenceCount() or None) if end is not None else None
-    )
+    if end is not None:
+        data["end_date"] = _format_ns_date(end.endDate())
+        data["occurrence_count"] = end.occurrenceCount() or None
+    else:
+        data["end_date"] = None
+        data["occurrence_count"] = None
     return data
 
 
@@ -138,9 +159,7 @@ def _format_attendee(participant) -> dict:
     return {
         "name": participant.name(),
         "url": _format_url(participant.URL()),
-        "status": _format_enum(
-            _PARTICIPANT_STATUS_LABELS, participant.participantStatus()
-        ),
+        "status": _format_participant_status(participant.participantStatus()),
     }
 
 
@@ -173,15 +192,13 @@ def _format_reminder(reminder) -> dict:
         data["recurrence"] = [_format_recurrence_rule(rule) for rule in rules]
     attendees = reminder.attendees()
     if attendees:
-        data["attendees"] = [_format_attendee(a) for a in attendees]
+        data["attendees"] = [_format_attendee(attendee) for attendee in attendees]
     return data
 
 
 def _format_completed_reminder(reminder) -> dict:
     data = _format_reminder(reminder)
-    data["completion_date"] = _format_ns_date(
-        reminder.completionDate()
-    )
+    data["completion_date"] = _format_ns_date(reminder.completionDate())
     return data
 
 
@@ -193,7 +210,13 @@ def ping() -> str:
 
 @mcp.tool()
 def list_reminder_lists() -> list[dict]:
-    """Returns one row per reminder list with id, name, incomplete_count, color ('#rrggbb'), source_name (the account it lives in), source_type (local/exchange/caldav/mobileme/subscribed/birthdays), writable and is_subscribed."""
+    """Returns one row per reminder list.
+
+    Each row carries id, name, incomplete_count, color ('#rrggbb'), source_name
+    (the account it lives in), source_type
+    (local/exchange/caldav/mobileme/subscribed/birthdays), writable and
+    is_subscribed.
+    """
     service = _get_service()
     lists = service.get_all_lists()
     all_reminders = service.get_all_incomplete_reminders()
@@ -205,18 +228,17 @@ def list_reminder_lists() -> list[dict]:
             counts[cal_id] = counts.get(cal_id, 0) + 1
     rows = []
     for cal in lists:
+        cal_id = cal.calendarIdentifier()
         source = cal.source()
         rows.append(
             {
-                "id": cal.calendarIdentifier(),
+                "id": cal_id,
                 "name": cal.title(),
-                "incomplete_count": counts.get(cal.calendarIdentifier(), 0),
+                "incomplete_count": counts.get(cal_id, 0),
                 "color": service.calendar_color_hex(cal),
                 "source_name": source.title() if source else None,
                 "source_type": (
-                    _format_enum(_SOURCE_TYPE_LABELS, source.sourceType())
-                    if source
-                    else None
+                    _format_source_type(source.sourceType()) if source else None
                 ),
                 "writable": cal.allowsContentModifications(),
                 "is_subscribed": cal.isSubscribed(),
@@ -237,7 +259,14 @@ def create_list(name: str) -> dict:
 def show_incomplete_reminders(
     list_name: str | None = None, list_id: str | None = None
 ) -> list[dict]:
-    """Returns incomplete reminders for a specific list. Each carries id, title, due_date, priority, notes, list, list_id, is_completed, start_date, url, location, created_at, last_modified_at, external_id and time_zone, plus alarms, recurrence and attendees when the reminder has them. Provide list_name, list_id (preferred, unique and stable across renames), or both."""
+    """Returns incomplete reminders for a specific list.
+
+    Each carries id, title, due_date, priority, notes, list, list_id,
+    is_completed, start_date, url, location, created_at, last_modified_at,
+    external_id and time_zone, plus alarms, recurrence and attendees when the
+    reminder has them. Provide list_name, list_id (preferred, unique and stable
+    across renames), or both.
+    """
     service = _get_service()
     reminders = service.get_incomplete_reminders(list_name, list_id)
     return [_format_reminder(r) for r in reminders]
@@ -245,7 +274,12 @@ def show_incomplete_reminders(
 
 @mcp.tool()
 def show_all_incomplete_reminders() -> dict:
-    """Returns all incomplete reminders as an object keyed by list name ('Unknown' for a reminder with no list), each reminder carrying the same fields as show_incomplete_reminders. Two lists sharing a name share one bucket; their rows stay separable by list_id."""
+    """Returns all incomplete reminders as an object keyed by list name.
+
+    A reminder with no list lands under 'Unknown'; each reminder carries the
+    same fields as show_incomplete_reminders. Two lists sharing a name share one
+    bucket; their rows stay separable by list_id.
+    """
     service = _get_service()
     reminders = service.get_all_incomplete_reminders()
     grouped: dict[str, list[dict]] = {}
@@ -259,7 +293,12 @@ def show_all_incomplete_reminders() -> dict:
 
 @mcp.tool()
 def show_completed_reminders_today(day: str | None = None) -> list[dict]:
-    """Returns reminders completed on the given day (ISO date YYYY-MM-DD, defaults to today), each carrying completion_date alongside the same fields as show_incomplete_reminders."""
+    """Returns reminders completed on the given day.
+
+    The day is an ISO date YYYY-MM-DD and defaults to today; each reminder
+    carries completion_date alongside the same fields as
+    show_incomplete_reminders.
+    """
     service = _get_service()
     target_day = date.fromisoformat(day) if day else None
     reminders = service.get_completed_reminders_for_day(target_day)

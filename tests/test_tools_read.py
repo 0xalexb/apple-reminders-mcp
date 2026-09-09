@@ -6,6 +6,7 @@ from datetime import date, datetime
 import pytest
 
 from apple_reminders_mcp.server import (
+    _UNSET_COMPONENT,
     _format_alarm,
     _format_attendee,
     _format_completed_reminder,
@@ -21,6 +22,7 @@ from apple_reminders_mcp.server import (
     show_incomplete_reminders,
 )
 from tests.mocks import (
+    REMINDER_KEYS,
     MockAlarm,
     MockCalendar,
     MockDateComponents,
@@ -81,7 +83,7 @@ class TestFormatDueDate:
         assert _format_due_date(dc) == "2026-03-15"
 
     def test_undefined_year_returns_none(self):
-        dc = MockDateComponents(2**63 - 1, 3, 15)
+        dc = MockDateComponents(_UNSET_COMPONENT, 3, 15)
         assert _format_due_date(dc) is None
 
     def test_midnight_time(self):
@@ -192,7 +194,7 @@ class TestFormatReminder:
 
         result = _format_reminder(rem)
 
-        assert len(result) == 15
+        assert set(result) == REMINDER_KEYS
         assert result["is_completed"] is False
         for key in (
             "start_date",
@@ -210,15 +212,10 @@ class TestFormatReminder:
         rem = MockReminder(
             title="Floating",
             identifier="rem-10",
-            start_components=MockDateComponents(2**63 - 1, 3, 15),
+            start_components=MockDateComponents(_UNSET_COMPONENT, 3, 15),
         )
 
         assert _format_reminder(rem)["start_date"] is None
-
-
-# ---------------------------------------------------------------------------
-# Tests: _format_alarm
-# ---------------------------------------------------------------------------
 
 
 class TestFormatAlarm:
@@ -298,11 +295,6 @@ class TestReminderAlarms:
         rem = MockReminder(title="Bare", identifier="rem-12")
 
         assert "alarms" not in _format_reminder(rem)
-
-
-# ---------------------------------------------------------------------------
-# Tests: _format_recurrence_rule
-# ---------------------------------------------------------------------------
 
 
 class TestFormatRecurrenceRule:
@@ -425,11 +417,6 @@ class TestReminderRecurrence:
         rem = MockReminder(title="Bare", identifier="rem-14")
 
         assert "recurrence" not in _format_reminder(rem)
-
-
-# ---------------------------------------------------------------------------
-# Tests: _format_attendee
-# ---------------------------------------------------------------------------
 
 
 class TestFormatAttendee:
@@ -966,11 +953,6 @@ class TestListIdentifiers:
         assert result[0]["list_id"] is None
 
 
-# ---------------------------------------------------------------------------
-# Tests: unmapped EventKit enum values
-# ---------------------------------------------------------------------------
-
-
 class TestUnmappedEnumValues:
     def test_an_unknown_alarm_proximity(self):
         assert _format_alarm(MockAlarm(proximity=99))["proximity"] == "custom(99)"
@@ -991,11 +973,6 @@ class TestUnmappedEnumValues:
         mock_service.get_all_incomplete_reminders.return_value = []
 
         assert list_reminder_lists()[0]["source_type"] == "custom(99)"
-
-
-# ---------------------------------------------------------------------------
-# Tests: a reminder carrying every collection at once
-# ---------------------------------------------------------------------------
 
 
 def _kitchen_sink_reminder(completion_date=None):
@@ -1113,11 +1090,6 @@ class TestReminderWithEveryCollection:
         assert "attendees" not in result
 
 
-# ---------------------------------------------------------------------------
-# Tests: wall-clock dates and absolute instants stay two distinct kinds
-# ---------------------------------------------------------------------------
-
-
 class TestTheTwoDateKinds:
     def test_wall_clock_dates_stay_naive_while_instants_carry_an_offset(self):
         result = _format_reminder(_kitchen_sink_reminder())
@@ -1154,11 +1126,6 @@ class TestTheTwoDateKinds:
             datetime.fromisoformat(result["created_at"]) < datetime.fromisoformat(
                 result["due_date"]
             )
-
-
-# ---------------------------------------------------------------------------
-# Tests: every tool payload survives a JSON round-trip
-# ---------------------------------------------------------------------------
 
 
 class TestPayloadsAreJsonSerialisable:

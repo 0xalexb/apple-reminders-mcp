@@ -12,7 +12,12 @@ from apple_reminders_mcp.server import (
     move_reminder,
     quick_capture,
 )
-from tests.mocks import MockCalendar, MockDateComponents, MockReminder
+from tests.mocks import (
+    REMINDER_KEYS,
+    MockCalendar,
+    MockDateComponents,
+    MockReminder,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -289,25 +294,6 @@ class TestListIdentifiersOnWrites:
 # ---------------------------------------------------------------------------
 
 
-_REMINDER_KEYS = {
-    "id",
-    "title",
-    "due_date",
-    "priority",
-    "notes",
-    "list",
-    "list_id",
-    "is_completed",
-    "start_date",
-    "url",
-    "location",
-    "created_at",
-    "last_modified_at",
-    "external_id",
-    "time_zone",
-}
-
-
 class TestWriteToolsReturnTheFullReminderShape:
     def test_create_reminder(self, mock_service):
         mock_service.create_reminder.return_value = MockReminder(
@@ -316,7 +302,7 @@ class TestWriteToolsReturnTheFullReminderShape:
 
         result = create_reminder("Ship it")
 
-        assert set(result) == _REMINDER_KEYS
+        assert set(result) == REMINDER_KEYS
         assert json.loads(json.dumps(result)) == result
 
     def test_move_reminder(self, mock_service):
@@ -326,7 +312,7 @@ class TestWriteToolsReturnTheFullReminderShape:
 
         result = move_reminder("rem-1", "Work")
 
-        assert set(result) == _REMINDER_KEYS
+        assert set(result) == REMINDER_KEYS
         assert json.loads(json.dumps(result)) == result
 
     def test_quick_capture(self, mock_service):
@@ -336,7 +322,7 @@ class TestWriteToolsReturnTheFullReminderShape:
 
         result = quick_capture("Idea")
 
-        assert set(result) == _REMINDER_KEYS
+        assert set(result) == REMINDER_KEYS
         assert json.loads(json.dumps(result)) == result
 
     def test_a_completed_reminder_reports_itself_completed(self, mock_service):
