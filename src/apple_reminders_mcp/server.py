@@ -24,6 +24,7 @@ def _get_service() -> EventKitService:
 
 _PRIORITY_LABELS = {0: "none", 1: "high", 5: "medium", 9: "low"}
 _PRIORITY_VALUES = {"none": 0, "low": 9, "medium": 5, "high": 1}
+_ALARM_PROXIMITY_LABELS = {0: "none", 1: "enter", 2: "leave"}
 
 
 def _format_priority(priority: int) -> str:
@@ -67,8 +68,23 @@ def _format_ns_date(ns_date) -> str | None:
     ).isoformat()
 
 
+def _format_alarm(alarm) -> dict:
+    data = {
+        "absolute_date": _format_ns_date(alarm.absoluteDate()),
+        "relative_offset": alarm.relativeOffset(),
+        "proximity": _ALARM_PROXIMITY_LABELS.get(alarm.proximity()),
+    }
+    structured = alarm.structuredLocation()
+    if structured is not None:
+        data["location"] = {
+            "title": structured.title(),
+            "radius": structured.radius(),
+        }
+    return data
+
+
 def _format_reminder(reminder) -> dict:
-    return {
+    data = {
         "id": reminder.calendarItemIdentifier(),
         "title": reminder.title(),
         "due_date": _format_due_date(reminder.dueDateComponents()),
@@ -87,6 +103,10 @@ def _format_reminder(reminder) -> dict:
         "external_id": reminder.calendarItemExternalIdentifier(),
         "time_zone": _format_time_zone(reminder.timeZone()),
     }
+    alarms = reminder.alarms()
+    if alarms:
+        data["alarms"] = [_format_alarm(alarm) for alarm in alarms]
+    return data
 
 
 def _format_completed_reminder(reminder) -> dict:

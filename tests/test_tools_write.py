@@ -77,6 +77,7 @@ class MockReminder:
         last_modified_date=None,
         external_id=None,
         time_zone=None,
+        alarms=None,
     ):
         self._title = title
         self._identifier = identifier
@@ -91,6 +92,7 @@ class MockReminder:
         self._last_modified_date = last_modified_date
         self._external_id = external_id
         self._time_zone = time_zone
+        self._alarms = alarms or []
 
     def title(self):
         return self._title
@@ -133,6 +135,9 @@ class MockReminder:
 
     def timeZone(self):
         return self._time_zone
+
+    def alarms(self):
+        return self._alarms
 
 
 @pytest.fixture()

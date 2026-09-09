@@ -244,20 +244,20 @@ tags, the flagged bit, smart lists, sections, rich-text notes.
 - Modify: `tests/test_tools_read.py`
 - Modify: `tests/test_tools_write.py`
 
-- [ ] add `_ALARM_PROXIMITY_LABELS = {0: "none", 1: "enter", 2: "leave"}`
-- [ ] add `_format_alarm(alarm)` returning `absolute_date` (`absoluteDate()` is an `NSDate` — use
+- [x] add `_ALARM_PROXIMITY_LABELS = {0: "none", 1: "enter", 2: "leave"}`
+- [x] add `_format_alarm(alarm)` returning `absolute_date` (`absoluteDate()` is an `NSDate` — use
       `_format_ns_date` from Task 1, not `_format_due_date`), `relative_offset`, `proximity`, and a
       nested `location` (`title`, `radius`) when `structuredLocation()` is not `None`
-- [ ] ⚠️ do **not** read `geoLocation()` coordinates: `CoreLocation` is not an installed dependency
+- [x] ⚠️ do **not** read `geoLocation()` coordinates: `CoreLocation` is not an installed dependency
       (`uv pip list | grep -i pyobjc` shows only core, cocoa, eventkit), so pyobjc has no metadata to
       decode the returned `CLLocationCoordinate2D` struct. The location `title` and `radius` are the
       useful parts; adding `pyobjc-framework-CoreLocation` for a lat/lon pair is a separate decision
-- [ ] wire `alarms` into `_format_reminder`, present only when `alarms()` is non-empty
-- [ ] add `alarms()` returning `[]` to `MockReminder` in both test files
-- [ ] write tests for a time alarm (absolute), an offset alarm (negative `relative_offset`), and a
+- [x] wire `alarms` into `_format_reminder`, present only when `alarms()` is non-empty
+- [x] add `alarms()` returning `[]` to `MockReminder` in both test files
+- [x] write tests for a time alarm (absolute), an offset alarm (negative `relative_offset`), and a
       geofence alarm (proximity + structured location)
-- [ ] write tests: no alarms → the `alarms` key is absent from the dict entirely
-- [ ] verify: `uv run pytest -q` passes and `"alarms" not in _format_reminder(bare_reminder)`
+- [x] write tests: no alarms → the `alarms` key is absent from the dict entirely
+- [x] verify: `uv run pytest -q` passes and `"alarms" not in _format_reminder(bare_reminder)`
 
 ### Task 3: Add recurrence rule read-back
 

@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from apple_reminders_mcp.server import (
+    _format_alarm,
     _format_completed_reminder,
     _format_due_date,
     _format_ns_date,
@@ -59,6 +60,7 @@ class MockReminder:
         last_modified_date=None,
         external_id=None,
         time_zone=None,
+        alarms=None,
     ):
         self._title = title
         self._identifier = identifier
@@ -74,6 +76,7 @@ class MockReminder:
         self._last_modified_date = last_modified_date
         self._external_id = external_id
         self._time_zone = time_zone
+        self._alarms = alarms or []
 
     def title(self):
         return self._title
@@ -120,6 +123,9 @@ class MockReminder:
     def timeZone(self):
         return self._time_zone
 
+    def alarms(self):
+        return self._alarms
+
 
 class MockNSDate:
     def __init__(self, timestamp: float):
@@ -143,6 +149,44 @@ class MockNSTimeZone:
 
     def name(self):
         return self._name
+
+
+class MockStructuredLocation:
+    def __init__(self, title: str, radius: float):
+        self._title = title
+        self._radius = radius
+
+    def title(self):
+        return self._title
+
+    def radius(self):
+        return self._radius
+
+
+class MockAlarm:
+    def __init__(
+        self,
+        absolute_date=None,
+        relative_offset: float = 0.0,
+        proximity: int = 0,
+        structured_location=None,
+    ):
+        self._absolute_date = absolute_date
+        self._relative_offset = relative_offset
+        self._proximity = proximity
+        self._structured_location = structured_location
+
+    def absoluteDate(self):
+        return self._absolute_date
+
+    def relativeOffset(self):
+        return self._relative_offset
+
+    def proximity(self):
+        return self._proximity
+
+    def structuredLocation(self):
+        return self._structured_location
 
 
 class MockDateComponents:
@@ -349,6 +393,89 @@ class TestFormatReminder:
         )
 
         assert _format_reminder(rem)["start_date"] is None
+
+
+# ---------------------------------------------------------------------------
+# Tests: _format_alarm
+# ---------------------------------------------------------------------------
+
+
+class TestFormatAlarm:
+    def test_absolute_time_alarm(self):
+        ts = datetime(2026, 3, 15, 9, 0).timestamp()
+        alarm = MockAlarm(absolute_date=MockNSDate(ts))
+
+        assert _format_alarm(alarm) == {
+            "absolute_date": "2026-03-15T09:00:00",
+            "relative_offset": 0.0,
+            "proximity": "none",
+        }
+
+    def test_relative_offset_alarm(self):
+        alarm = MockAlarm(relative_offset=-3600.0)
+
+        assert _format_alarm(alarm) == {
+            "absolute_date": None,
+            "relative_offset": -3600.0,
+            "proximity": "none",
+        }
+
+    def test_geofence_alarm(self):
+        alarm = MockAlarm(
+            proximity=1,
+            structured_location=MockStructuredLocation("Home", 150.0),
+        )
+
+        assert _format_alarm(alarm) == {
+            "absolute_date": None,
+            "relative_offset": 0.0,
+            "proximity": "enter",
+            "location": {"title": "Home", "radius": 150.0},
+        }
+
+    def test_leave_proximity(self):
+        alarm = MockAlarm(
+            proximity=2,
+            structured_location=MockStructuredLocation("Office", 200.0),
+        )
+
+        result = _format_alarm(alarm)
+
+        assert result["proximity"] == "leave"
+        assert result["location"] == {"title": "Office", "radius": 200.0}
+
+
+class TestReminderAlarms:
+    def test_alarms_included_when_present(self):
+        ts = datetime(2026, 3, 15, 9, 0).timestamp()
+        rem = MockReminder(
+            title="Wake up",
+            identifier="rem-11",
+            alarms=[
+                MockAlarm(absolute_date=MockNSDate(ts)),
+                MockAlarm(relative_offset=-900.0),
+            ],
+        )
+
+        result = _format_reminder(rem)
+
+        assert result["alarms"] == [
+            {
+                "absolute_date": "2026-03-15T09:00:00",
+                "relative_offset": 0.0,
+                "proximity": "none",
+            },
+            {
+                "absolute_date": None,
+                "relative_offset": -900.0,
+                "proximity": "none",
+            },
+        ]
+
+    def test_no_alarms_key_absent(self):
+        rem = MockReminder(title="Bare", identifier="rem-12")
+
+        assert "alarms" not in _format_reminder(rem)
 
 
 # ---------------------------------------------------------------------------
