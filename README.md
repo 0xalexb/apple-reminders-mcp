@@ -70,15 +70,67 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
 | Tool | Description |
 |------|-------------|
 | `ping` | Health check - returns "pong" |
-| `list_reminder_lists` | Returns every list's `id`, name, and incomplete reminder count |
+| `list_reminder_lists` | Returns every list's `id`, `name`, `incomplete_count`, `color`, `source_name`, `source_type`, `writable` and `is_subscribed` |
 | `create_list` | Creates a new reminder list |
-| `show_incomplete_reminders` | Returns incomplete reminders for a list, by `list_id` (preferred) or `list_name` |
-| `show_all_incomplete_reminders` | Returns all incomplete reminders grouped by list |
+| `show_incomplete_reminders` | Returns incomplete reminders for a list, by `list_id` (preferred) or `list_name`, with the full reminder field set below |
+| `show_all_incomplete_reminders` | Returns all incomplete reminders grouped by list, with the full reminder field set below |
+| `show_completed_reminders_today` | Returns reminders completed on a given day (ISO `YYYY-MM-DD`, defaults to today), each carrying `completion_date` alongside the full reminder field set |
 | `create_reminder` | Creates a reminder with optional list (`list_id` or `list_name`), due date (ISO 8601), priority (none/low/medium/high), recurrence (daily/weekly/monthly/yearly), and notes |
 | `complete_reminder` | Marks a reminder as completed by its ID |
 | `delete_reminder` | Deletes a reminder by its ID |
 | `move_reminder` | Moves a reminder to a different list, by `target_list_id` (preferred) or `target_list_name` |
 | `quick_capture` | Quickly captures a reminder in the default list with just a title and optional notes |
+
+## Returned fields
+
+### Reminder
+
+Every reminder returned by `show_incomplete_reminders`, `show_all_incomplete_reminders` and
+`show_completed_reminders_today` carries these keys, always present and `null` when unset:
+
+| Key | Meaning |
+|------|-------------|
+| `id` | `calendarItemIdentifier` - local to this device, can change on sync |
+| `title` | Reminder title |
+| `due_date` | ISO 8601, date-only when no time is set |
+| `priority` | `none`, `low`, `medium`, `high`, or `custom(N)` |
+| `notes` | Plain-text notes |
+| `list` | Name of the containing list |
+| `list_id` | `calendarIdentifier` of the containing list |
+| `is_completed` | Whether the reminder is done |
+| `start_date` | ISO 8601, same shape as `due_date` |
+| `url` | Attached URL |
+| `location` | Free-text location string |
+| `created_at` | ISO 8601 timestamp |
+| `last_modified_at` | ISO 8601 timestamp |
+| `external_id` | `calendarItemExternalIdentifier` - stable across devices, shared by occurrences of a recurring item |
+| `time_zone` | Time zone name; `null` means a floating date |
+
+`show_completed_reminders_today` adds `completion_date` (ISO 8601 timestamp).
+
+Three collections are included **only when non-empty**, so bulk listings do not carry empty arrays:
+
+- `alarms[]` - `absolute_date`, `relative_offset` (seconds, negative means before the due date),
+  `proximity` (`none`/`enter`/`leave`) and, for a geofence, a nested `location` with `title` and
+  `radius`.
+- `recurrence[]` - `frequency` (`daily`/`weekly`/`monthly`/`yearly`), `interval`, `end_date` and
+  `occurrence_count` always; plus `days_of_week` (each `{day, week_number}`, day 1 = Sunday),
+  `days_of_month`, `months_of_year` and `set_positions` when the rule sets them.
+- `attendees[]` - `name`, `url` and `status` (`unknown`, `pending`, `accepted`, `declined`,
+  `tentative`, `delegated`, `completed`, `in_process`).
+
+### List
+
+`list_reminder_lists` returns one row per list with `id`, `name`, `incomplete_count`, `color`
+(`#rrggbb`), `source_name` (the account the list lives in), `source_type` (`local`, `exchange`,
+`caldav`, `mobileme`, `subscribed`, `birthdays` - iCloud accounts report as `caldav`), `writable`
+and `is_subscribed`.
+
+### Not exposed by EventKit
+
+Subtasks and parent links, tags, the flagged bit, smart lists, sections and rich-text notes are
+absent from the payloads above because EventKit does not surface them at all. They are a platform
+limitation, not a gap in this server, and no amount of work here can reach them.
 
 ## Development
 

@@ -396,20 +396,20 @@ tags, the flagged bit, smart lists, sections, rich-text notes.
 
 ### Task 8: Update documentation
 
-- [ ] update the README "Available Tools" table (`README.md:70-81`): the **two** existing `show_*`
+- [x] update the README "Available Tools" table (`README.md:70-81`): the **two** existing `show_*`
       rows and `list_reminder_lists` describe the fields they now return
-- [ ] ➕ add the missing `show_completed_reminders_today` row — the tool exists in `server.py` but
+- [x] ➕ add the missing `show_completed_reminders_today` row — the tool exists in `server.py` but
       was never listed in the table
-- [ ] add a short "Returned fields" section to the README listing reminder and list keys, and
+- [x] add a short "Returned fields" section to the README listing reminder and list keys, and
       naming what EventKit does not expose (subtasks, tags, flagged, sections) so the omission
       reads as a platform limit rather than a gap
-- [ ] correct the `CLAUDE.md` Architecture line that claims all pyobjc calls are isolated in
+- [x] correct the `CLAUDE.md` Architecture line that claims all pyobjc calls are isolated in
       `eventkit_service.py` — state that macOS-only *framework imports* are isolated there, while
       selector calls on returned objects happen in both files
-- [ ] add the enum maps to the `CLAUDE.md` Conventions list alongside the existing priority and
+- [x] add the enum maps to the `CLAUDE.md` Conventions list alongside the existing priority and
       recurrence mappings
-- [ ] verify: `grep -c "alarms" README.md` returns at least 1
-- [ ] move this plan to `docs/plans/completed/`
+- [x] verify: `grep -c "alarms" README.md` returns at least 1
+- [x] move this plan to `docs/plans/completed/` — not performed by this task; the exec harness moves the plan after the review, finalize and stats phases finish, and moving it early breaks them
 
 ## Post-Completion
 

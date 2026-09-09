@@ -12,7 +12,8 @@
 ## Architecture
 
 - `src/apple_reminders_mcp/server.py` - MCPServer tool definitions, formatting helpers, lazy-init service
-- `src/apple_reminders_mcp/eventkit_service.py` - EventKit wrapper; all pyobjc calls are isolated here
+- `src/apple_reminders_mcp/eventkit_service.py` - EventKit wrapper; the macOS-only framework imports (EventKit, AppKit, Foundation) are isolated here and are all function-local
+- Selector calls on objects the service hands back (`reminder.title()`, `cal.source()`, `ns_date.timeIntervalSince1970()`) happen in both files; `server.py` must stay importable off macOS, so it never imports a framework and maps EventKit enums with plain int-keyed dicts
 - Tests mock EventKit objects since pyobjc only works on macOS
 
 ## Conventions
@@ -21,5 +22,9 @@
 - Priority mapping: 0=none, 1=high, 5=medium, 9=low (Apple's EventKit values)
 - Due dates use ISO 8601 format at the tool API level
 - Recurrence mapping: "daily"=0, "weekly"=1, "monthly"=2, "yearly"=3 (EventKit EKRecurrenceFrequency values)
+- Alarm proximity mapping: 0=none, 1=enter, 2=leave (EKAlarmProximity)
+- Participant status mapping: 0=unknown, 1=pending, 2=accepted, 3=declined, 4=tentative, 5=delegated, 6=completed, 7=in_process (EKParticipantStatus)
+- Source type mapping: 0=local, 1=exchange, 2=caldav, 3=mobileme, 4=subscribed, 5=birthdays (EKSourceType); iCloud accounts report as caldav
+- Reminder payloads: scalars are always present (explicitly `null` when unset); the `alarms`, `recurrence` and `attendees` collections are emitted only when non-empty
 - Invalid inputs raise `ValueError`; failed EventKit operations raise `RuntimeError`; timeouts raise `TimeoutError`
 - EventKitService is lazily initialized on first tool call via `_get_service()`
