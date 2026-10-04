@@ -86,6 +86,9 @@ class MockWritableReminder:
     def setCompleted_(self, completed):
         self._completed = completed
 
+    def isCompleted(self):
+        return self._completed
+
     def dueDateComponents(self):
         return self._due_date_components
 
@@ -453,6 +456,125 @@ class TestCompleteReminder:
 
         with pytest.raises(RuntimeError, match="Failed to complete reminder"):
             svc.complete_reminder("rem-42")
+
+
+def _service_with(reminder):
+    store = _make_store()
+    store.calendarItemWithIdentifier_.return_value = reminder
+    svc, _, _ = _make_service(store=store)
+    return svc, store
+
+
+class TestUpdateReminder:
+    def test_title_only_leaves_notes(self):
+        rem = MockWritableReminder("Old", "rem-42")
+        rem.setNotes_("keep me")
+        svc, store = _service_with(rem)
+
+        result = svc.update_reminder("rem-42", title="New")
+
+        assert result is rem
+        assert rem.title() == "New"
+        assert rem.notes() == "keep me"
+        store.saveReminder_commit_error_.assert_called_once_with(rem, True, None)
+
+    def test_notes_only_leaves_title(self):
+        rem = MockWritableReminder("Keep", "rem-42")
+        rem.setNotes_("old")
+        svc, _ = _service_with(rem)
+
+        svc.update_reminder("rem-42", notes="new")
+
+        assert rem.title() == "Keep"
+        assert rem.notes() == "new"
+
+    def test_append_notes_onto_existing(self):
+        rem = MockWritableReminder("Task", "rem-42")
+        rem.setNotes_("n1")
+        svc, _ = _service_with(rem)
+
+        svc.update_reminder("rem-42", append_notes="Ticket: https://example.com/2")
+
+        assert rem.notes() == "n1\nTicket: https://example.com/2"
+
+    @pytest.mark.parametrize("empty", [None, ""])
+    def test_append_notes_onto_empty(self, empty):
+        rem = MockWritableReminder("Task", "rem-42")
+        rem.setNotes_(empty)
+        svc, _ = _service_with(rem)
+
+        svc.update_reminder("rem-42", append_notes="Ticket: x")
+
+        assert rem.notes() == "Ticket: x"
+
+    def test_notes_and_append_notes_raise(self):
+        rem = MockWritableReminder("Task", "rem-42")
+        svc, store = _service_with(rem)
+
+        with pytest.raises(ValueError, match="not both"):
+            svc.update_reminder("rem-42", notes="a", append_notes="b")
+        store.saveReminder_commit_error_.assert_not_called()
+
+    def test_not_found_raises(self):
+        svc, _ = _service_with(None)
+
+        with pytest.raises(ValueError, match="Reminder 'rem-99' not found"):
+            svc.update_reminder("rem-99", title="x")
+
+    def test_save_failure_raises(self):
+        rem = MockWritableReminder("Task", "rem-42")
+        svc, store = _service_with(rem)
+        store.saveReminder_commit_error_.return_value = (False, "err")
+
+        with pytest.raises(RuntimeError, match="Failed to update reminder"):
+            svc.update_reminder("rem-42", title="x")
+
+
+class TestFindReminders:
+    def test_query_is_case_insensitive_substring(self):
+        cal = MockWritableCalendar("Projects")
+        hit = MockWritableReminder("Fix the Worklog drift", "rem-1")
+        miss = MockWritableReminder("Buy milk", "rem-2")
+        svc, store, _ = _make_service(calendars=[cal], reminders=[hit, miss])
+
+        result = svc.find_reminders(list_name="Projects", query="WORKLOG")
+
+        assert result == [hit]
+        store.predicateForIncompleteRemindersWithDueDateStarting_ending_calendars_.assert_called_once_with(
+            None, None, [cal]
+        )
+
+    def test_no_query_returns_all_open(self):
+        cal = MockWritableCalendar("Projects")
+        a = MockWritableReminder("A", "rem-1")
+        b = MockWritableReminder("B", "rem-2")
+        svc, _, _ = _make_service(calendars=[cal], reminders=[a, b])
+
+        assert svc.find_reminders(list_name="Projects") == [a, b]
+
+    def test_excludes_completed(self):
+        cal = MockWritableCalendar("Projects")
+        open_rem = MockWritableReminder("Task open", "rem-1")
+        done = MockWritableReminder("Task done", "rem-2")
+        done.setCompleted_(True)
+        svc, _, _ = _make_service(calendars=[cal], reminders=[open_rem, done])
+
+        assert svc.find_reminders(list_name="Projects", query="task") == [open_rem]
+
+    def test_no_list_searches_every_list(self):
+        cals = [MockWritableCalendar("A", "cal-a"), MockWritableCalendar("B", "cal-b")]
+        svc, store, _ = _make_service(calendars=cals, reminders=[])
+
+        assert svc.find_reminders() == []
+        store.predicateForIncompleteRemindersWithDueDateStarting_ending_calendars_.assert_called_once_with(
+            None, None, cals
+        )
+
+    def test_unknown_list_raises(self):
+        svc, _, _ = _make_service(calendars=[])
+
+        with pytest.raises(ValueError, match="List 'Missing' not found"):
+            svc.find_reminders(list_name="Missing")
 
 
 # ---------------------------------------------------------------------------
