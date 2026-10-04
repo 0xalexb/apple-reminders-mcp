@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from apple_reminders_mcp.server import _UNSET_COMPONENT
+from apple_reminders_mcp.formatting import _UNSET_COMPONENT
 
 REMINDER_KEYS = {
     "id",

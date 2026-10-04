@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import inspect
 import json
 from datetime import datetime
 
@@ -9,8 +11,11 @@ from apple_reminders_mcp.server import (
     complete_reminder,
     create_reminder,
     delete_reminder,
+    find_reminders,
+    mcp,
     move_reminder,
     quick_capture,
+    update_reminder,
 )
 from tests.mocks import (
     REMINDER_KEYS,
@@ -334,3 +339,71 @@ class TestWriteToolsReturnTheFullReminderShape:
         )
 
         assert move_reminder("rem-2", "Work")["is_completed"] is True
+
+
+class TestUpdateReminder:
+    def test_returns_formatted_reminder(self, mock_service):
+        rem = MockReminder(
+            title="CCM-42 Fix drift",
+            identifier="rem-7",
+            calendar=MockCalendar("Projects"),
+            notes="n1\nTicket: https://github.com/o/r/issues/42",
+        )
+        mock_service.update_reminder.return_value = rem
+
+        result = update_reminder(
+            "rem-7",
+            title="CCM-42 Fix drift",
+            append_notes="Ticket: https://github.com/o/r/issues/42",
+        )
+
+        assert set(result) == REMINDER_KEYS
+        assert result["title"] == "CCM-42 Fix drift"
+        assert result["notes"] == "n1\nTicket: https://github.com/o/r/issues/42"
+        mock_service.update_reminder.assert_called_once_with(
+            "rem-7",
+            title="CCM-42 Fix drift",
+            notes=None,
+            append_notes="Ticket: https://github.com/o/r/issues/42",
+        )
+        json.dumps(result)
+
+    def test_unknown_id_propagates(self, mock_service):
+        mock_service.update_reminder.side_effect = ValueError(
+            "Reminder 'bad-id' not found"
+        )
+
+        with pytest.raises(ValueError, match="not found"):
+            update_reminder("bad-id", title="x")
+
+
+class TestFindReminders:
+    def test_returns_formatted_list(self, mock_service):
+        cal = MockCalendar("Projects")
+        mock_service.find_reminders.return_value = [
+            MockReminder(title="A", identifier="rem-1", calendar=cal),
+            MockReminder(title="B", identifier="rem-2", calendar=cal),
+        ]
+
+        result = find_reminders(list_name="Projects", query="x")
+
+        assert [r["id"] for r in result] == ["rem-1", "rem-2"]
+        assert all(set(r) == REMINDER_KEYS for r in result)
+        mock_service.find_reminders.assert_called_once_with(
+            list_name="Projects", list_id=None, query="x"
+        )
+        json.dumps(result)
+
+    def test_empty(self, mock_service):
+        mock_service.find_reminders.return_value = []
+
+        assert find_reminders(list_name="Projects") == []
+
+
+def test_registered_tools_include_update_and_find():
+    tools = mcp.list_tools()
+    if inspect.iscoroutine(tools):
+        tools = asyncio.run(tools)
+    names = {tool.name for tool in tools}
+
+    assert {"update_reminder", "find_reminders", "create_reminder"} <= names

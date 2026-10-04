@@ -5,7 +5,7 @@ from datetime import date, datetime
 
 import pytest
 
-from apple_reminders_mcp.server import (
+from apple_reminders_mcp.formatting import (
     _UNSET_COMPONENT,
     _format_alarm,
     _format_attendee,
@@ -15,6 +15,8 @@ from apple_reminders_mcp.server import (
     _format_priority,
     _format_recurrence_rule,
     _format_reminder,
+)
+from apple_reminders_mcp.server import (
     create_list,
     list_reminder_lists,
     show_all_incomplete_reminders,
