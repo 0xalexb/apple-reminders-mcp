@@ -80,6 +80,39 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
 | `delete_reminder` | Deletes a reminder by its ID; returns `{id, deleted}` |
 | `move_reminder` | Moves a reminder to a different list, by `target_list_id` (preferred) or `target_list_name`; returns the moved reminder with the full field set below |
 | `quick_capture` | Quickly captures a reminder in the default list with just a title and optional notes; returns the captured reminder with the full field set below |
+| `update_reminder` | Changes a reminder's `title` and `notes` by its ID; `append_notes` adds a line after the existing notes instead (not combinable with `notes`); returns the reminder with the full field set below |
+| `find_reminders` | Returns open reminders whose title contains `query` (case-insensitive), in one list (`list_id` or `list_name`) or across all lists, with the full field set below |
+
+## `reminders` CLI
+
+The package also installs a `reminders` command over the same service, for scripts that should not
+speak MCP. It prints JSON to stdout (the same reminder objects the tools return) and errors to stderr.
+
+```bash
+reminders find --list "Projects - Personal" [--query text]      # JSON array of open reminders
+reminders create --list "Projects - Personal" --title t [--notes n]
+reminders update <id> [--title t] [--notes n | --append-notes n]  # JSON object
+```
+
+| Exit | Meaning |
+|------|---------|
+| `0` | Success |
+| `1` | Reminder or list not found, or bad arguments |
+| `2` | Reminders access denied, or the 30 s access request timed out |
+
+Exit `2` is never an empty result: a caller must not read it as "no reminders".
+
+Install it on its own with uv. Point `UV_TOOL_BIN_DIR` at a directory that is not on `PATH` ahead of
+the Homebrew install, because the same install also links `apple-reminders-mcp`, and a copy earlier
+on `PATH` would take over the MCP server your client launches by name:
+
+```bash
+UV_TOOL_BIN_DIR="$HOME/.local/share/uv/tool-bin" \
+  uv tool install git+https://github.com/0xalexb/apple-reminders-mcp
+```
+
+Run from a terminal, macOS attributes the Reminders access request to the terminal app, which must
+be granted access once.
 
 ## Returned fields
 
@@ -237,6 +270,8 @@ uv run ruff check src/ tests/
 ## Architecture
 
 - `src/apple_reminders_mcp/server.py` - MCPServer with tool definitions
+- `src/apple_reminders_mcp/formatting.py` - JSON formatting shared by the server and the CLI
+- `src/apple_reminders_mcp/cli.py` - the `reminders` command; imports `formatting`, never `server`
 - `src/apple_reminders_mcp/eventkit_service.py` - EventKit service layer; macOS-only framework
   imports are confined to this file
 - `tests/` - Test suite with mocked EventKit objects (runs on any platform)

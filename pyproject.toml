@@ -13,6 +13,7 @@ dependencies = [
 
 [project.scripts]
 apple-reminders-mcp = "apple_reminders_mcp.server:main"
+reminders = "apple_reminders_mcp.cli:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -251,6 +251,57 @@ class EventKitService:
             raise RuntimeError(f"Failed to create reminder: {error}")
         return reminder
 
+    def update_reminder(
+        self,
+        reminder_id: str,
+        title: str | None = None,
+        notes: str | None = None,
+        append_notes: str | None = None,
+    ) -> Any:
+        """Change a reminder's title and notes; fields left as None are untouched.
+
+        `append_notes` adds its text on a new line after the existing notes, or becomes the notes
+        when there are none. It cannot be combined with `notes`.
+        """
+        if notes is not None and append_notes is not None:
+            raise ValueError("Provide notes or append_notes, not both")
+        reminder = self._find_reminder_by_id(reminder_id)
+        if reminder is None:
+            raise ValueError(f"Reminder '{reminder_id}' not found")
+        if title is not None:
+            reminder.setTitle_(title)
+        if notes is not None:
+            reminder.setNotes_(notes)
+        if append_notes is not None:
+            existing = reminder.notes()
+            reminder.setNotes_(f"{existing}\n{append_notes}" if existing else append_notes)
+        success, error = self._store.saveReminder_commit_error_(
+            reminder, True, None
+        )
+        if not success:
+            raise RuntimeError(f"Failed to update reminder: {error}")
+        return reminder
+
+    def find_reminders(
+        self,
+        list_name: str | None = None,
+        list_id: str | None = None,
+        query: str | None = None,
+    ) -> list[Any]:
+        """Open reminders in a list (or every list), optionally filtered by a title substring.
+
+        The match is case-insensitive.
+        """
+        if list_name is not None or list_id is not None:
+            calendars = [self.resolve_list(list_name, list_id)]
+        else:
+            calendars = self.get_all_lists()
+        reminders = [r for r in self._fetch_incomplete_reminders(calendars) if not r.isCompleted()]
+        if query:
+            needle = query.casefold()
+            reminders = [r for r in reminders if needle in (r.title() or "").casefold()]
+        return reminders
+
     def complete_reminder(self, reminder_id: str) -> Any:
         """Mark a reminder as completed."""
         reminder = self._find_reminder_by_id(reminder_id)
