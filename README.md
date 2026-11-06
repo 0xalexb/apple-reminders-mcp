@@ -117,6 +117,10 @@ argument. Neither `find` nor `create` needs a list: `find` with none searches ev
 | `1` | Reminder or list not found, or bad arguments |
 | `2` | Reminders access denied, or the 30 s access request timed out |
 
+An id that names no reminder is not found, and that includes a calendar event's id. An empty `--day`,
+`--due-date`, `--list-id` or `--target-list-id`, and `update` with no field to change, are bad
+arguments: the verb writes nothing and exits `1`.
+
 Exit `2` is never an empty result: a caller must not read it as "no reminders".
 
 Install it on its own with uv. Point `UV_TOOL_BIN_DIR` at a directory that is not on `PATH` ahead of
@@ -262,7 +266,8 @@ lists look identical once returned.
 
 Every list carries a `calendarIdentifier` that is unique and stable across renames. It is exposed as
 `id` on `list_reminder_lists` and as `list_id` on every reminder, and the tools that take a list
-accept `list_id` / `target_list_id` alongside the name. Where both are given, the id wins.
+accept `list_id` / `target_list_id` alongside the name. Where both are given, the id wins. An id passed
+as an empty string counts as given, so it is an error and never falls through to the name.
 
 Prefer the id wherever one is available. `apple-calendar-mcp` has always worked this way; this brings
 the two servers into line.

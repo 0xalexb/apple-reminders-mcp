@@ -80,7 +80,7 @@ class EventKitService:
 
     def resolve_list(self, name: str | None = None, calendar_id: str | None = None) -> Any:
         """Resolve a list from an id, a name, or both. The id wins when both are given."""
-        if calendar_id:
+        if calendar_id is not None:
             calendar = self.get_list_by_id(calendar_id)
             if calendar is None:
                 raise ValueError(f"List with id '{calendar_id}' not found")
@@ -261,10 +261,13 @@ class EventKitService:
         """Change a reminder's title and notes; fields left as None are untouched.
 
         `append_notes` adds its text on a new line after the existing notes, or becomes the notes
-        when there are none. It cannot be combined with `notes`.
+        when there are none. It cannot be combined with `notes`, and at least one of `title`,
+        `notes` and `append_notes` is required.
         """
         if notes is not None and append_notes is not None:
             raise ValueError("Provide notes or append_notes, not both")
+        if title is None and notes is None and append_notes is None:
+            raise ValueError("Provide title, notes or append_notes")
         reminder = self._find_reminder_by_id(reminder_id)
         if reminder is None:
             raise ValueError(f"Reminder '{reminder_id}' not found")
@@ -345,8 +348,16 @@ class EventKitService:
         return reminder
 
     def _find_reminder_by_id(self, reminder_id: str) -> Any | None:
-        """Look up a reminder by its calendarItemIdentifier."""
-        return self._store.calendarItemWithIdentifier_(reminder_id)
+        """Look up a reminder by its calendarItemIdentifier.
+
+        An identifier names any calendar item, an event included, so an item that is not a
+        reminder reads as not found. `isCompleted` tells them apart: EKReminder answers it and
+        EKEvent does not.
+        """
+        item = self._store.calendarItemWithIdentifier_(reminder_id)
+        if item is None or not hasattr(item, "isCompleted"):
+            return None
+        return item
 
     def _make_date_components(
         self, dt: datetime, *, include_time: bool = True

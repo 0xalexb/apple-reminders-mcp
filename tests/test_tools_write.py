@@ -31,6 +31,11 @@ from tests.mocks import (
 
 
 class TestCreateReminder:
+    def test_empty_due_date_raises(self, mock_service):
+        with pytest.raises(ValueError):
+            create_reminder("Buy milk", due_date="")
+        mock_service.create_reminder.assert_not_called()
+
     def test_minimal_create(self, mock_service):
         cal = MockCalendar("Default")
         rem = MockReminder(

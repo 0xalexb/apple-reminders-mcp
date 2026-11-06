@@ -465,6 +465,20 @@ class TestExitCodes:
         assert "not-a-date" in err
         cli_service.get_completed_reminders_for_day.assert_not_called()
 
+    def test_empty_day_is_1(self, cli_service, capsys):
+        rc, out, err = _run(capsys, "completed-today", "--day", "")
+
+        assert (rc, out) == (1, "")
+        assert err.startswith("reminders: ")
+        cli_service.get_completed_reminders_for_day.assert_not_called()
+
+    def test_empty_due_date_is_1(self, cli_service, capsys):
+        rc, out, err = _run(capsys, "create", "--title", "t", "--due-date", "")
+
+        assert (rc, out) == (1, "")
+        assert err.startswith("reminders: ")
+        cli_service.create_reminder.assert_not_called()
+
     def test_bad_due_date_is_1(self, cli_service, capsys):
         rc, out, _ = _run(capsys, "create", "--title", "t", "--due-date", "not-a-date")
 
