@@ -99,6 +99,43 @@ class MockWritableReminder:
         self._recurrence_rules.append(rule)
 
 
+class MockCalendarEvent:
+    """Simulates an EKEvent: it answers `setCompleted_` but, unlike EKReminder, not `isCompleted`."""
+
+    def __init__(self, identifier: str = "ev-1"):
+        self._identifier = identifier
+        self._title = "Standup"
+        self._notes = None
+        self._calendar = None
+
+    def calendarItemIdentifier(self):
+        return self._identifier
+
+    def title(self):
+        return self._title
+
+    def setTitle_(self, title):
+        self._title = title
+
+    def notes(self):
+        return self._notes
+
+    def setNotes_(self, notes):
+        self._notes = notes
+
+    def calendar(self):
+        return self._calendar
+
+    def setCalendar_(self, calendar):
+        self._calendar = calendar
+
+    def setCompleted_(self, completed):
+        pass
+
+    def occurrenceDate(self):
+        return None
+
+
 def _make_ek_module():
     """Create a mock EventKit module with required constants and classes."""
     ek = MagicMock()
@@ -515,6 +552,25 @@ class TestUpdateReminder:
             svc.update_reminder("rem-42", notes="a", append_notes="b")
         store.saveReminder_commit_error_.assert_not_called()
 
+    def test_no_fields_raises(self):
+        rem = MockWritableReminder("Task", "rem-42")
+        svc, store = _service_with(rem)
+
+        with pytest.raises(ValueError, match="Provide title, notes or append_notes"):
+            svc.update_reminder("rem-42")
+
+        store.saveReminder_commit_error_.assert_not_called()
+        store.calendarItemWithIdentifier_.assert_not_called()
+
+    def test_empty_title_is_still_an_update(self):
+        rem = MockWritableReminder("Old", "rem-42")
+        svc, store = _service_with(rem)
+
+        svc.update_reminder("rem-42", title="")
+
+        assert rem.title() == ""
+        store.saveReminder_commit_error_.assert_called_once_with(rem, True, None)
+
     def test_not_found_raises(self):
         svc, _ = _service_with(None)
 
@@ -641,6 +697,19 @@ class TestMoveReminder:
         with pytest.raises(ValueError, match="Reminder 'rem-99' not found"):
             svc.move_reminder("rem-99", "Personal")
 
+    def test_empty_target_list_id_raises_and_writes_nothing(self):
+        mock_rem = MockWritableReminder("Task", "rem-42")
+        mock_rem.setCalendar_("original")
+        store = _make_store(calendars=[MockWritableCalendar("Personal", "cal-2")])
+        store.calendarItemWithIdentifier_.return_value = mock_rem
+        svc, _, _ = _make_service(store=store)
+
+        with pytest.raises(ValueError, match="List with id '' not found"):
+            svc.move_reminder("rem-42", "Personal", "")
+
+        store.saveReminder_commit_error_.assert_not_called()
+        assert mock_rem.calendar() == "original"
+
     def test_target_list_not_found_raises(self):
         mock_rem = MockWritableReminder("Task", "rem-42")
         store = _make_store(calendars=[])
@@ -662,11 +731,38 @@ class TestMoveReminder:
             svc.move_reminder("rem-42", "Personal")
 
 
+class TestCalendarEventIdIsNotAReminder:
+    @pytest.mark.parametrize("call", [
+        lambda svc: svc.update_reminder("ev-1", title="x"),
+        lambda svc: svc.complete_reminder("ev-1"),
+        lambda svc: svc.delete_reminder("ev-1"),
+        lambda svc: svc.move_reminder("ev-1", "Personal"),
+    ], ids=["update", "complete", "delete", "move"])
+    def test_is_not_found_and_nothing_is_written(self, call):
+        store = _make_store(calendars=[MockWritableCalendar("Personal", "cal-2")])
+        store.calendarItemWithIdentifier_.return_value = MockCalendarEvent("ev-1")
+        svc, _, _ = _make_service(store=store)
+
+        with pytest.raises(ValueError, match="Reminder 'ev-1' not found"):
+            call(svc)
+
+        store.saveReminder_commit_error_.assert_not_called()
+        store.removeReminder_commit_error_.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # Tests: _find_reminder_by_id
 # ---------------------------------------------------------------------------
 
 class TestFindReminderById:
+    def test_event_is_not_found(self):
+        store = _make_store()
+        store.calendarItemWithIdentifier_.return_value = MockCalendarEvent("ev-1")
+        svc, _, _ = _make_service(store=store)
+
+        assert svc._find_reminder_by_id("ev-1") is None
+
+
     def test_found(self):
         mock_rem = MockWritableReminder("Task", "rem-42")
         store = _make_store()
@@ -852,6 +948,16 @@ class TestResolveList:
         service = self._service([MockWritableCalendar("Work", "cal-a")])
         with pytest.raises(ValueError, match="cal-zz"):
             service.resolve_list(None, "cal-zz")
+
+    def test_an_empty_id_is_given_and_does_not_fall_through_to_the_name(self):
+        service = self._service([MockWritableCalendar("Work", "cal-a")])
+        with pytest.raises(ValueError, match="List with id '' not found"):
+            service.resolve_list("Work", "")
+
+    def test_an_empty_id_alone_raises(self):
+        service = self._service([MockWritableCalendar("Work", "cal-a")])
+        with pytest.raises(ValueError, match="List with id '' not found"):
+            service.resolve_list(None, "")
 
     def test_an_unknown_name_names_the_name(self):
         service = self._service([MockWritableCalendar("Work", "cal-a")])

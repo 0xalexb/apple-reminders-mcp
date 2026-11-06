@@ -908,6 +908,11 @@ class TestShowCompletedRemindersToday:
         with pytest.raises(ValueError):
             show_completed_reminders_today("not-a-date")
 
+    def test_empty_day_raises(self, mock_service):
+        with pytest.raises(ValueError):
+            show_completed_reminders_today("")
+        mock_service.get_completed_reminders_for_day.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # Tests: list identifiers on the tool surface

@@ -138,7 +138,7 @@ def update_reminder(
     notes: str | None = None,
     append_notes: str | None = None,
 ) -> dict:
-    """Updates a reminder's title and notes; omitted fields are left as they are. Takes the reminder's id. append_notes adds its text on a new line after the existing notes (or becomes the notes when there are none) and cannot be combined with notes."""
+    """Updates a reminder's title and notes; omitted fields are left as they are. Takes the reminder's id. append_notes adds its text on a new line after the existing notes (or becomes the notes when there are none) and cannot be combined with notes. At least one of title, notes and append_notes is required."""
     service = _get_service()
     reminder = service.update_reminder(
         reminder_id, title=title, notes=notes, append_notes=append_notes

@@ -71,7 +71,7 @@ def show_all_incomplete_reminders(service: EventKitService) -> dict:
 def show_completed_reminders_today(
     service: EventKitService, day: str | None
 ) -> list[dict]:
-    target_day = date.fromisoformat(day) if day else None
+    target_day = date.fromisoformat(day) if day is not None else None
     reminders = service.get_completed_reminders_for_day(target_day)
     return [_format_completed_reminder(r) for r in reminders]
 
@@ -95,7 +95,7 @@ def create_reminder(
     priority_int = _PRIORITY_VALUES[priority_lower]
     parsed_due: datetime | None = None
     has_time = False
-    if due_date:
+    if due_date is not None:
         parsed_due = datetime.fromisoformat(due_date)
         has_time = len(due_date) > 10
     reminder = service.create_reminder(
