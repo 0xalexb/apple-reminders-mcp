@@ -86,13 +86,30 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
 ## `reminders` CLI
 
 The package also installs a `reminders` command over the same service, for scripts that should not
-speak MCP. It prints JSON to stdout (the same reminder objects the tools return) and errors to stderr.
+speak MCP. Each verb is one MCP tool and prints that tool's result as one JSON value and a newline
+on stdout (never empty on exit `0`; a list result is one array, `[]` when empty). Errors go to stderr.
 
 ```bash
-reminders find --list "Projects - Personal" [--query text]      # JSON array of open reminders
-reminders create --list "Projects - Personal" --title t [--notes n]
-reminders update <id> [--title t] [--notes n | --append-notes n]  # JSON object
+reminders lists                                                  # list_reminder_lists
+reminders create-list --name n                                   # create_list
+reminders incomplete [--list-name n] [--list-id id]              # show_incomplete_reminders
+reminders all-incomplete                                         # show_all_incomplete_reminders
+reminders completed-today [--day YYYY-MM-DD]                     # show_completed_reminders_today
+reminders find [--list n] [--list-id id] [--query text]          # find_reminders
+reminders create --title t [--list n] [--list-id id] [--due-date iso] \
+  [--priority none|low|medium|high] [--recurrence daily|weekly|monthly|yearly] [--notes n]
+                                                                 # create_reminder
+reminders update <id> [--title t] [--notes n | --append-notes n] # update_reminder
+reminders complete --reminder-id id                              # complete_reminder
+reminders delete --reminder-id id                                # delete_reminder
+reminders move --reminder-id id [--target-list-name n] [--target-list-id id]  # move_reminder
+reminders quick-capture --title t [--notes n]                    # quick_capture
 ```
+
+The new verbs take the MCP parameter names in kebab-case. The three older verbs keep their spelling:
+`--list` is `list_name` on `find` and `create`, and `update` takes the reminder id as a positional
+argument. Neither `find` nor `create` needs a list: `find` with none searches every list, and
+`create` with none uses the default list. `ping` is not ported. No verb takes a file.
 
 | Exit | Meaning |
 |------|---------|
@@ -107,8 +124,7 @@ the Homebrew install, because the same install also links `apple-reminders-mcp`,
 on `PATH` would take over the MCP server your client launches by name:
 
 ```bash
-UV_TOOL_BIN_DIR="$HOME/.local/share/uv/tool-bin" \
-  uv tool install git+https://github.com/0xalexb/apple-reminders-mcp
+UV_TOOL_BIN_DIR=~/.local/share/uv/tool-bin uv tool install git+https://github.com/0xalexb/apple-reminders-mcp
 ```
 
 Run from a terminal, macOS attributes the Reminders access request to the terminal app, which must
@@ -271,7 +287,8 @@ uv run ruff check src/ tests/
 
 - `src/apple_reminders_mcp/server.py` - MCPServer with tool definitions
 - `src/apple_reminders_mcp/formatting.py` - JSON formatting shared by the server and the CLI
-- `src/apple_reminders_mcp/cli.py` - the `reminders` command; imports `formatting`, never `server`
+- `src/apple_reminders_mcp/operations.py` - tool bodies shared by the server and the CLI; imports `formatting` only
+- `src/apple_reminders_mcp/cli.py` - the `reminders` command; imports `operations` and `formatting`, never `server`
 - `src/apple_reminders_mcp/eventkit_service.py` - EventKit service layer; macOS-only framework
   imports are confined to this file
 - `tests/` - Test suite with mocked EventKit objects (runs on any platform)

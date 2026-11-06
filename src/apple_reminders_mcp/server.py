@@ -1,17 +1,13 @@
 from __future__ import annotations
 
 import threading
-from datetime import date, datetime
 from importlib.metadata import version
 
 from mcp.server import MCPServer
 
+from apple_reminders_mcp import operations
 from apple_reminders_mcp.eventkit_service import EventKitService
-from apple_reminders_mcp.formatting import (
-    _format_completed_reminder,
-    _format_reminder,
-    _format_source_type,
-)
+from apple_reminders_mcp.formatting import _format_reminder
 
 mcp = MCPServer("apple-reminders", version=version("apple-reminders-mcp"))
 
@@ -25,9 +21,6 @@ def _get_service() -> EventKitService:
         if _service is None:
             _service = EventKitService()
         return _service
-
-
-_PRIORITY_VALUES = {"none": 0, "low": 9, "medium": 5, "high": 1}
 
 
 @mcp.tool()
@@ -45,42 +38,13 @@ def list_reminder_lists() -> list[dict]:
     (local/exchange/caldav/mobileme/subscribed/birthdays), writable and
     is_subscribed.
     """
-    service = _get_service()
-    lists = service.get_all_lists()
-    all_reminders = service.get_all_incomplete_reminders()
-    counts: dict[str, int] = {}
-    for r in all_reminders:
-        cal = r.calendar()
-        if cal:
-            cal_id = cal.calendarIdentifier()
-            counts[cal_id] = counts.get(cal_id, 0) + 1
-    rows = []
-    for cal in lists:
-        cal_id = cal.calendarIdentifier()
-        source = cal.source()
-        rows.append(
-            {
-                "id": cal_id,
-                "name": cal.title(),
-                "incomplete_count": counts.get(cal_id, 0),
-                "color": service.calendar_color_hex(cal),
-                "source_name": source.title() if source else None,
-                "source_type": (
-                    _format_source_type(source.sourceType()) if source else None
-                ),
-                "writable": cal.allowsContentModifications(),
-                "is_subscribed": cal.isSubscribed(),
-            }
-        )
-    return rows
+    return operations.list_reminder_lists(_get_service())
 
 
 @mcp.tool()
 def create_list(name: str) -> dict:
     """Creates a new reminder list."""
-    service = _get_service()
-    cal = service.create_list(name)
-    return {"name": cal.title(), "created": True}
+    return operations.create_list(_get_service(), name)
 
 
 @mcp.tool()
@@ -95,9 +59,7 @@ def show_incomplete_reminders(
     reminder has them. Provide list_name, list_id (preferred, unique and stable
     across renames), or both.
     """
-    service = _get_service()
-    reminders = service.get_incomplete_reminders(list_name, list_id)
-    return [_format_reminder(r) for r in reminders]
+    return operations.show_incomplete_reminders(_get_service(), list_name, list_id)
 
 
 @mcp.tool()
@@ -108,15 +70,7 @@ def show_all_incomplete_reminders() -> dict:
     same fields as show_incomplete_reminders. Two lists sharing a name share one
     bucket; their rows stay separable by list_id.
     """
-    service = _get_service()
-    reminders = service.get_all_incomplete_reminders()
-    grouped: dict[str, list[dict]] = {}
-    for r in reminders:
-        list_name = r.calendar().title() if r.calendar() else "Unknown"
-        if list_name not in grouped:
-            grouped[list_name] = []
-        grouped[list_name].append(_format_reminder(r))
-    return grouped
+    return operations.show_all_incomplete_reminders(_get_service())
 
 
 @mcp.tool()
@@ -127,10 +81,7 @@ def show_completed_reminders_today(day: str | None = None) -> list[dict]:
     carries completion_date alongside the same fields as
     show_incomplete_reminders.
     """
-    service = _get_service()
-    target_day = date.fromisoformat(day) if day else None
-    reminders = service.get_completed_reminders_for_day(target_day)
-    return [_format_completed_reminder(r) for r in reminders]
+    return operations.show_completed_reminders_today(_get_service(), day)
 
 
 @mcp.tool()
@@ -144,46 +95,28 @@ def create_reminder(
     notes: str | None = None,
 ) -> dict:
     """Creates a reminder. Optional: list_name or list_id (preferred, unique and stable across renames; defaults to the default list), due_date (ISO 8601 e.g. '2026-03-15' or '2026-03-15T10:30:00'), priority (none/low/medium/high), recurrence (daily/weekly/monthly/yearly), notes."""
-    service = _get_service()
-    priority_lower = priority.lower()
-    if priority_lower not in _PRIORITY_VALUES:
-        raise ValueError(
-            f"Invalid priority '{priority}'. "
-            f"Must be one of: {', '.join(_PRIORITY_VALUES)}"
-        )
-    priority_int = _PRIORITY_VALUES[priority_lower]
-    parsed_due: datetime | None = None
-    has_time = False
-    if due_date:
-        parsed_due = datetime.fromisoformat(due_date)
-        has_time = len(due_date) > 10
-    reminder = service.create_reminder(
-        title=title,
-        list_name=list_name,
-        list_id=list_id,
-        due_date=parsed_due,
-        priority=priority_int,
-        recurrence=recurrence,
-        notes=notes,
-        include_time=has_time,
+    return operations.create_reminder(
+        _get_service(),
+        title,
+        list_name,
+        list_id,
+        due_date,
+        priority,
+        recurrence,
+        notes,
     )
-    return _format_reminder(reminder)
 
 
 @mcp.tool()
 def complete_reminder(reminder_id: str) -> dict:
     """Marks a reminder as completed. Takes the reminder's id."""
-    service = _get_service()
-    reminder = service.complete_reminder(reminder_id)
-    return {"id": reminder.calendarItemIdentifier(), "completed": True}
+    return operations.complete_reminder(_get_service(), reminder_id)
 
 
 @mcp.tool()
 def delete_reminder(reminder_id: str) -> dict:
     """Deletes a reminder. Takes the reminder's id."""
-    service = _get_service()
-    service.delete_reminder(reminder_id)
-    return {"id": reminder_id, "deleted": True}
+    return operations.delete_reminder(_get_service(), reminder_id)
 
 
 @mcp.tool()
@@ -193,9 +126,9 @@ def move_reminder(
     target_list_id: str | None = None,
 ) -> dict:
     """Moves a reminder to a different list. Provide target_list_name, target_list_id (preferred, unique and stable across renames), or both."""
-    service = _get_service()
-    reminder = service.move_reminder(reminder_id, target_list_name, target_list_id)
-    return _format_reminder(reminder)
+    return operations.move_reminder(
+        _get_service(), reminder_id, target_list_name, target_list_id
+    )
 
 
 @mcp.tool()
@@ -220,17 +153,13 @@ def find_reminders(
     query: str | None = None,
 ) -> list[dict]:
     """Returns open reminders whose title contains query, case-insensitively; with no query, every open reminder. Provide list_name or list_id (preferred, unique and stable across renames) to search one list; with neither, every list is searched. Each reminder carries the same fields as show_incomplete_reminders."""
-    service = _get_service()
-    reminders = service.find_reminders(list_name=list_name, list_id=list_id, query=query)
-    return [_format_reminder(r) for r in reminders]
+    return operations.find_reminders(_get_service(), list_name, list_id, query)
 
 
 @mcp.tool()
 def quick_capture(title: str, notes: str | None = None) -> dict:
     """Quickly captures a reminder in the default list with no date or priority. Optimized for fast idea capture."""
-    service = _get_service()
-    reminder = service.create_reminder(title=title, notes=notes)
-    return _format_reminder(reminder)
+    return operations.quick_capture(_get_service(), title, notes)
 
 
 def main():
